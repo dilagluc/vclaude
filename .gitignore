@@ -1,0 +1,39 @@
+__pycache__/
+.ruff_cache/
+*.pyc
+
+# Gateway build artifacts (recreated by prepare.sh / CI)
+_gateway/
+
+# Source maps (prevent source recovery)
+*.js.map
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.crt
+credentials.json
+*.credentials*
+*.secret*
+*.token*
+
+# Claude Code artifacts
+.claude.json
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.swp
+*~
+.settings/
+*.sublime-*
+
+# Runtime data
+*.log
+.gateway-data/
+
+# OS
+.DS_Store
+Thumbs.db

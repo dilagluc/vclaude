@@ -1,0 +1,6 @@
+.git
+*.md
+.github
+.vscode
+*.log
+_gateway/node_modules/.cache
