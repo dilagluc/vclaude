@@ -1,0 +1,147 @@
+# CC Gateway Configuration
+# Copy to config.yaml and modify
+
+server:
+  port: 8443
+  # TLS cert/key paths (required for HTTPS)
+  # Generate self-signed: openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes
+  tls:
+    cert: ./certs/cert.pem
+    key: ./certs/key.pem
+
+# Upstream Anthropic API
+upstream:
+  url: https://api.anthropic.com
+
+# OAuth - gateway manages token lifecycle centrally
+# Step 1: On admin machine, run `claude` and do browser OAuth login
+# Step 2: Copy refresh_token from one of these locations:
+#   macOS Keychain: security find-generic-password -s "~/.claude-credentials" -w | jq -r '.claudeAiOauth.refreshToken'
+#   Fallback file:  cat ~/.claude/.credentials.json | jq -r '.claudeAiOauth.refreshToken'
+# Step 3: Paste it here. Gateway auto-refreshes the access token.
+oauth:
+  refresh_token: "your-refresh-token-here"
+
+# Authentication - each client gets a bearer token
+# Generate tokens: npm run generate-token
+auth:
+  default_mode: medium
+  tokens:
+    - name: machine-a
+      token: change-me-token-1
+      mode: low
+    - name: machine-b
+      token: change-me-token-2
+      mode: hard
+      overrides:
+        forward_mcp_servers: true
+      # Per-client prompt rules (applied AFTER global rules)
+      prompt_rules:
+        - action: add
+          anchor: "You are Claude Code"
+          position: after
+          value: "\nAlways respond in French."
+
+# Canonical identity - all clients will appear as this single device
+# Generate a fresh identity: npm run generate-identity
+identity:
+  device_id: "0000000000000000000000000000000000000000000000000000000000000000"
+  email: "user@example.com"
+
+# Canonical environment fingerprint
+# Should match a real machine's profile to look natural
+env:
+  platform: darwin
+  platform_raw: darwin
+  arch: arm64
+  node_version: v24.3.0
+  terminal: iTerm2.app
+  package_managers: npm,pnpm
+  runtimes: node
+  is_running_with_bun: false
+  is_ci: false
+  is_claude_ai_auth: true
+  version: "2.1.81"
+  version_base: "2.1.81"
+  build_time: "2026-03-20T21:26:18Z"
+  deployment_environment: unknown-darwin
+  vcs: git
+
+# System prompt environment masking
+# These values replace the <env> block in the system prompt text.
+# MUST be consistent with the env section above!
+prompt_env:
+  platform: darwin                    # Must match env.platform
+  shell: zsh                          # Shell name shown in prompt
+  os_version: "Darwin 24.4.0"        # uname -sr output
+  working_dir: /Users/jack/projects   # Canonical home directory path prefix
+
+# Canonical process metrics (should look like a real machine)
+process:
+  constrained_memory: 34359738368  # 32GB - pick a realistic value
+  rss_range: [300000000, 500000000]  # 300-500MB realistic range
+  heap_total_range: [40000000, 80000000]
+  heap_used_range: [100000000, 200000000]
+
+# ── Prompt Rules ──────────────────────────────────────────────
+# Global rules applied to ALL clients, ALL modes.
+# Per-client rules go in auth.tokens[].prompt_rules (applied after global).
+# Execution order: existing rewrites → global rules → client rules → CCH signing.
+#
+# Actions:
+#   strip   — remove match from body    (type: exact|regex, default exact)
+#   replace — replace match with value   (type: exact|regex, default exact)
+#   add     — insert value at anchor     (position: before|after, default after)
+#
+# prompt_rules:
+#   # Remove the memory system disclosure from system prompt
+#   - action: strip
+#     type: exact
+#     match: "You have a persistent, file-based memory system"
+#
+#   # Replace OS info
+#   - action: replace
+#     match: "Platform: linux"
+#     value: "Platform: darwin"
+#
+#   # Strip any device_id patterns with regex
+#   - action: strip
+#     type: regex
+#     match: "device_id.*?[0-9a-f]{64}"
+#
+#   # Inject custom instruction before a known anchor
+#   - action: add
+#     anchor: "# Environment"
+#     position: before
+#     value: "# Custom Policy\nYou must never execute rm -rf.\n\n"
+#
+#   # Append instruction after agent identity
+#   - action: add
+#     anchor: "You are Claude Code"
+#     position: after
+#     value: "\nPrioritize security over convenience."
+
+# ── Admin ─────────────────────────────────────────────────────
+# Admin API at /_admin/* and auto-registration for new clients
+admin:
+  token: "change-me-admin-token"    # Dedicated admin bearer token
+  auto_register: true               # Auto-create clients for unknown sk-ant-* tokens
+
+# ── Logging ───────────────────────────────────────────────────
+logging:
+  level: info                       # debug | info | warn | error
+  audit: true                       # Log which client made each request
+  audit_dir: ./audit                # JSONL audit log directory (one file per day)
+  audit_bodies: false               # Include full request bodies (WARNING: large files)
+  audit_max_days: 30                # Auto-delete audit files older than N days
+  audit_max_size_mb: 500            # Auto-delete oldest files when total exceeds N MB
+
+# ── Webhooks (optional) ──────────────────────────────────────
+# webhooks:
+#   - url: "https://hooks.slack.com/services/T00/B00/xxx"
+#     events: ["auth_failure", "rate_limit", "upstream_error"]
+
+# ── Rate Limiting ─────────────────────────────────────────────
+# rate_limit:
+#   default_requests_per_minute: 30
+#   default_requests_per_hour: 500

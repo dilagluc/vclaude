@@ -1,0 +1,381 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                     CC GATEWAY — FULL CONFIGURATION REFERENCE              ║
+# ║                                                                            ║
+# ║  This file documents EVERY possible config field with explanations.        ║
+# ║  Copy to config.yaml and edit for your deployment.                         ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SERVER
+# ══════════════════════════════════════════════════════════════════════════════
+# The HTTPS (or HTTP) listener the gateway binds to.
+# Clients set ANTHROPIC_BASE_URL to this address.
+
+server:
+
+  # Port to listen on.
+  # Clients will connect to https://<host>:<port>
+  port: 8443
+
+  # TLS certificate and private key.
+  # Required for HTTPS. Omit both to run plain HTTP (dev only).
+  # Generate self-signed:
+  #   openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem \
+  #     -out certs/cert.pem -days 365 -nodes -subj "/CN=gateway"
+  tls:
+    cert: ./certs/cert.pem       # Path to PEM certificate
+    key: ./certs/key.pem         # Path to PEM private key
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# UPSTREAM
+# ══════════════════════════════════════════════════════════════════════════════
+# The real Anthropic API that the gateway forwards rewritten requests to.
+
+upstream:
+  url: https://api.anthropic.com  # Do not change unless using a staging env
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# OAUTH
+# ══════════════════════════════════════════════════════════════════════════════
+# The gateway manages OAuth centrally — client machines never do browser login.
+# It holds a refresh_token and auto-refreshes access tokens before expiry.
+#
+# How to get the refresh token:
+#   1. On an admin machine, run `claude` and complete the browser OAuth login
+#   2. Extract the refresh token:
+#      macOS:  security find-generic-password -s "~/.claude-credentials" -w \
+#              | jq -r '.claudeAiOauth.refreshToken'
+#      Linux:  cat ~/.claude/.credentials.json | jq -r '.claudeAiOauth.refreshToken'
+#      Or run: bash scripts/extract-token.sh
+#   3. Paste it below. The gateway handles all token lifecycle from here.
+#
+# IMPORTANT: Refresh tokens rotate on each use. If you start the gateway,
+# the token in this file becomes stale. The gateway uses the latest rotated
+# token in memory. If you restart, you may need a fresh token.
+
+oauth:
+  refresh_token: "your-refresh-token-here"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ══════════════════════════════════════════════════════════════════════════════
+# Each client machine gets a Bearer token to authenticate to the gateway.
+# Clients send it via:
+#   ANTHROPIC_CUSTOM_HEADERS="Proxy-Authorization: Bearer <token>"
+#
+# Generate tokens: npm run generate-token
+
+auth:
+
+  # Default mode for clients that don't specify their own.
+  # low    — anonymize identity, forward ALL traffic to Anthropic
+  # medium — anonymize + stub telemetry/PII endpoints (default, recommended)
+  # hard   — anonymize + only forward /v1/messages (minimal footprint)
+  default_mode: medium
+
+  tokens:
+
+    # ── Client 1: Full access, anonymized ─────────────────────
+    - name: my-laptop                # Human-readable name (shown in logs/audit)
+      token: change-me-token-1       # Bearer token the client sends
+
+      # Override the default mode for this client.
+      # Optional — omit to use default_mode above.
+      mode: low
+
+      # Per-client policy overrides.
+      # Flip individual behaviors regardless of mode.
+      # See the "POLICY OVERRIDES" section below for all available fields.
+      # Optional — omit to use mode defaults.
+      overrides:
+        forward_mcp_servers: true    # Example: keep MCP even in hard mode
+
+      # Per-client prompt rules.
+      # Applied AFTER global prompt_rules (see below).
+      # Optional — omit for no client-specific rules.
+      prompt_rules:
+        - action: add
+          anchor: "You are a Claude agent"
+          position: after
+          value: " Always respond in French."
+
+      # Per-client rate limit.
+      # Overrides the global rate_limit defaults below.
+      # Optional — omit to use global defaults. Omit both for no limit.
+      rate_limit:
+        requests_per_minute: 30      # Max requests in a rolling 60-second window
+        requests_per_hour: 500       # Max requests in a rolling 3600-second window
+
+    # ── Client 2: Minimal footprint ───────────────────────────
+    - name: shared-server
+      token: change-me-token-2
+      mode: hard
+      overrides:
+        forward_mcp_servers: true    # Hard mode stubs MCP by default; re-enable it
+        forward_plugin_downloads: true  # Temporarily allow plugin downloads
+
+    # ── Client 3: Inherits defaults ───────────────────────────
+    - name: ci-runner
+      token: change-me-token-3
+      # No mode → uses default_mode (medium)
+      # No overrides → uses mode defaults
+      # No prompt_rules → no client-specific rules
+      # No rate_limit → uses global defaults
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POLICY OVERRIDES REFERENCE
+# ══════════════════════════════════════════════════════════════════════════════
+# These are all possible fields for auth.tokens[].overrides.
+# Each controls whether a category of traffic is forwarded or stubbed locally.
+# true = forward to Anthropic (with identity rewriting)
+# false = return a static stub response (request never leaves the gateway)
+#
+# ┌──────────────────────────┬────────┬────────┬────────┐
+# │ Field                    │  low   │ medium │  hard  │
+# ├──────────────────────────┼────────┼────────┼────────┤
+# │ forward_growthbook       │  true  │  true  │ false  │  /api/eval/sdk-*
+# │ forward_event_logging    │  true  │ false  │ false  │  /api/event_logging/ (69KB telemetry)
+# │ forward_bootstrap        │  true  │ false  │ false  │  /api/claude_cli/bootstrap
+# │ forward_penguin          │  true  │ false  │ false  │  /api/claude_code_penguin*
+# │ forward_grove            │  true  │ false  │ false  │  /api/claude_code_grove
+# │ forward_account_settings │  true  │ false  │ false  │  /api/oauth/account*
+# │ forward_mcp_servers      │  true  │  true  │ false  │  /v1/mcp_servers
+# │ forward_mcp_registry     │  true  │ false  │ false  │  /mcp-registry/
+# │ forward_metrics          │  true  │ false  │ false  │  /api/claude_code/metrics
+# │ forward_settings         │  true  │  true  │ false  │  /api/claude_code/settings
+# │ forward_session_sharing  │  true  │ false  │ false  │  /api/claude_code_shared_session_transcripts
+# │ forward_team_memory      │  true  │  true  │ false  │  /api/claude_code/team_memory
+# │ forward_profile          │  true  │ false  │ false  │  /api/oauth/profile, organizations, usage
+# │ forward_api_management   │  true  │ false  │ false  │  /api/oauth/claude_cli/create_api_key, roles
+# │ forward_files            │  true  │  true  │ false  │  /api/oauth/file*, /v1/files
+# │ forward_feedback         │  true  │ false  │ false  │  /api/claude_cli_feedback, /api/web/
+# │ forward_remote           │  true  │  true  │ false  │  /v1/sessions, /v1/code/, /v2/ccr-sessions
+# │ forward_skills           │  true  │  true  │ false  │  /v1/skills
+# │ forward_unknown          │ false  │ false  │ false  │  Catch-all for unknown/future paths
+# ├──────────────────────────┼────────┼────────┼────────┤
+# │ forward_bridge           │ false  │ false  │ false  │  wss://bridge.claudeusercontent.com (*)
+# │ forward_plugin_downloads │ false  │ false  │ false  │  downloads.claude.ai (*)
+# │ forward_auto_update      │ false  │ false  │ false  │  storage.googleapis.com (*)
+# │ forward_datadog          │ false  │ false  │ false  │  http-intake.logs.us5.datadoghq.com (*)
+# ├──────────────────────────┼────────┼────────┼────────┤
+# │ strip_metadata           │ false  │ false  │  true  │  Replace metadata.user_id with anonymous
+# │ compute_cch              │  true  │  true  │  true  │  Re-sign CCH after rewrites
+# │ randomize_process        │  true  │  true  │  true  │  Randomize process metrics in telemetry
+# │ rewrite_identity         │  true  │  true  │  true  │  Rewrite device_id/email everywhere
+# │ rewrite_env              │  true  │  true  │  true  │  Rewrite env in system prompt
+# └──────────────────────────┴────────┴────────┴────────┘
+#
+# (*) External domains bypass ANTHROPIC_BASE_URL. These policy fields
+#     document intent — actual enforcement is via Clash rules, firewall,
+#     or /etc/hosts. See clash-rules.yaml and scripts/client-env.sh.
+#
+# Always forwarded (no policy field, cannot be stubbed):
+#   POST /v1/messages*    — the actual API call
+#   GET  /v1/models*      — model listing
+#   POST /v1/complete     — legacy completion
+#   HEAD /                — health check
+#   /_*                   — gateway internal endpoints
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# IDENTITY
+# ══════════════════════════════════════════════════════════════════════════════
+# Canonical identity — ALL clients appear as this single device.
+# The gateway rewrites device_id, email, and related fields in every request.
+#
+# Generate a fresh random identity:
+#   npm run generate-identity
+# Or manually:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+identity:
+  device_id: "0000000000000000000000000000000000000000000000000000000000000000"
+    # 64-char hex string. Must NOT be all zeros (validation will reject it).
+    # This replaces the real SHA256 device fingerprint in every request.
+    # All clients share this identity — Anthropic sees one "device".
+  email: "user@example.com"
+    # Replaces the real email in GrowthBook, event logging, and
+    # any other body field containing an @ symbol (deep rewrite).
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENVIRONMENT FINGERPRINT
+# ══════════════════════════════════════════════════════════════════════════════
+# Canonical environment — replaces 20+ fields in telemetry events.
+# Should look like a plausible real machine to avoid detection.
+# These values are injected into event_logging, GrowthBook, and Datadog payloads.
+
+env:
+  platform: darwin              # OS: darwin | linux | win32
+  platform_raw: darwin          # Raw platform (usually same as platform)
+  arch: arm64                   # CPU: arm64 | x64
+  node_version: v24.3.0        # Node.js version reported by binary
+  terminal: iTerm2.app          # Terminal emulator name
+  package_managers: npm,pnpm    # Comma-separated list
+  runtimes: node                # Comma-separated list
+  is_running_with_bun: false    # Whether Bun runtime is detected
+  is_ci: false                  # CI environment detection (always false)
+  is_claude_ai_auth: true       # OAuth authentication type
+  version: "2.1.88"             # Claude Code version to report
+  version_base: "2.1.88"       # Base version (usually same as version)
+  build_time: "2026-03-30T22:00:36Z"  # Build timestamp
+  deployment_environment: unknown-darwin  # docker | unknown-darwin | unknown-linux
+  vcs: git                      # Version control system
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SYSTEM PROMPT ENVIRONMENT
+# ══════════════════════════════════════════════════════════════════════════════
+# These values replace the <env> block embedded in the system prompt.
+# The system prompt contains lines like "Platform: linux" and
+# "Primary working directory: /home/user/proj" — the gateway rewrites them.
+# MUST be consistent with the env section above.
+
+prompt_env:
+  platform: darwin              # Replaces "Platform: <value>" in system prompt
+  shell: zsh                    # Replaces "Shell: <value>"
+  os_version: "Darwin 24.4.0"  # Replaces "OS Version: <value>"
+  working_dir: /Users/jack/projects
+    # Replaces "Primary working directory: <path>"
+    # Also used to derive home directory prefix (e.g. /Users/jack/)
+    # which replaces any /home/<user>/ paths in the prompt.
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROCESS METRICS
+# ══════════════════════════════════════════════════════════════════════════════
+# Telemetry events include base64-encoded process metrics (RSS, heap, CPU).
+# The gateway replaces real values with randomized values within these ranges.
+# Pick realistic values for the machine type you're impersonating.
+
+process:
+  constrained_memory: 34359738368       # Total system RAM in bytes (32 GB here)
+  rss_range: [300000000, 500000000]     # RSS (resident set size) range: 300–500 MB
+  heap_total_range: [40000000, 80000000]   # V8 heap total: 40–80 MB
+  heap_used_range: [100000000, 200000000]  # V8 heap used: 100–200 MB
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROMPT RULES (global)
+# ══════════════════════════════════════════════════════════════════════════════
+# Rules that modify the serialized JSON request body AFTER all identity/env
+# rewrites and BEFORE CCH signing. Applied to ALL clients, ALL modes.
+# Per-client rules go in auth.tokens[].prompt_rules (applied after global).
+#
+# Execution order:
+#   1. Identity/env/metadata rewrites (built-in)
+#   2. JSON.stringify()
+#   3. Global prompt_rules (this section)
+#   4. Client prompt_rules (per-token)
+#   5. CCH signing (covers the final form)
+#
+# Three actions available:
+#
+#   strip — Remove every occurrence of 'match' from the body
+#     Fields: action, type (exact|regex, default exact), match
+#
+#   replace — Replace every occurrence of 'match' with 'value'
+#     Fields: action, type (exact|regex, default exact), match, value
+#
+#   add — Insert 'value' before or after 'anchor' (first occurrence)
+#     Fields: action, anchor, position (before|after, default after), value
+#
+# IMPORTANT: Rules operate on the raw serialized JSON string. This means:
+#   - Newlines in JSON text appear as \n (literal backslash-n)
+#   - Quotes appear as \" (escaped)
+#   - You can match across JSON field boundaries
+#   - If 'anchor' is not found, the 'add' rule is silently skipped
+
+prompt_rules:
+
+  # Example: Remove the memory system path disclosure from system prompt
+  # - action: strip
+  #   type: regex
+  #   match: "/home/[a-z]+/\\.claude/projects/[^\"\\\\]+/memory/"
+
+  # Example: Replace a keyword across the entire body
+  # - action: replace
+  #   type: exact
+  #   match: "software engineering"
+  #   value: "software development"
+
+  # Example: Strip a full sentence
+  # - action: strip
+  #   type: exact
+  #   match: "IMPORTANT: You must NEVER generate or guess URLs for the user."
+
+  # Example: Inject a custom instruction after the agent identity
+  # - action: add
+  #   anchor: "You are a Claude agent"
+  #   position: after
+  #   value: " Prioritize security over convenience."
+
+  # Example: Strip any device_id hex patterns via regex
+  # - action: strip
+  #   type: regex
+  #   match: "device_id.*?[0-9a-f]{64}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RESPONSE RULES (optional)
+# ══════════════════════════════════════════════════════════════════════════════
+# Apply prompt rules to API RESPONSES before returning them to the client.
+# Disabled by default. Only works for non-streaming responses.
+# Uses the same rule format as prompt_rules above.
+
+response_rules:
+  enabled: false                # Set to true to enable response rewriting
+  # rules:
+  #   - action: strip
+  #     match: "some unwanted text in response"
+  #   - action: replace
+  #     match: "old text"
+  #     value: "new text"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RATE LIMITING
+# ══════════════════════════════════════════════════════════════════════════════
+# Global default rate limits. Applied to clients without their own rate_limit.
+# Uses a sliding window counter in memory (resets on gateway restart).
+# Clients exceeding limits receive HTTP 429 Too Many Requests.
+# Omit or leave empty for no default limit.
+
+rate_limit:
+  default_requests_per_minute: 60    # Rolling 60-second window
+  default_requests_per_hour: 1000    # Rolling 3600-second window
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LOGGING
+# ══════════════════════════════════════════════════════════════════════════════
+
+logging:
+
+  # Log level: debug | info | warn | error
+  # debug — shows every rewrite step, rule application, CCH signing
+  # info  — startup, OAuth refresh, client connections (recommended)
+  # warn  — unauthorized attempts, rate limits, token expiry
+  # error — only failures
+  level: info
+
+  # Console audit log: prints one line per request with client name + status.
+  # Example: [AUDIT] client=my-laptop POST /v1/messages?beta=true → 200
+  audit: true
+
+  # Structured audit log directory.
+  # If set, writes JSONL files: <audit_dir>/YYYY-MM-DD.jsonl
+  # Each entry contains: timestamp, client, method, path, request_size,
+  # response_status, duration_ms, body_hash (SHA256), rules_applied count.
+  # Omit to disable file-based audit logging.
+  audit_dir: ./audit
+
+  # Include full request bodies in audit logs.
+  # WARNING: Bodies can be 100KB+. Only enable for debugging or compliance.
+  # Body hash (SHA256) is always logged regardless of this setting.
+  audit_bodies: false
