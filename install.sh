@@ -392,8 +392,16 @@ cmd_admin() {
     fi
 
     local port="${2:-18443}"
+
+    # Show admin token
+    local admin_token
+    admin_token=$(docker exec "$container_id" cat /opt/.gateway-data/.admin-token 2>/dev/null || echo "")
+
     log_info "Forwarding container:8443 → host:$port"
     log_info "Dashboard: https://localhost:$port/_dashboard"
+    if [[ -n "$admin_token" ]]; then
+      log_info "Admin token: $admin_token"
+    fi
     log_info "Press Ctrl+C to stop"
     echo ""
 

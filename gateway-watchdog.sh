@@ -70,8 +70,6 @@ if [ ! -s "$CONFIG_FILE" ]; then
   log "Generating config (medium mode)..."
   cp /opt/void-claude/config.example.yaml "$CONFIG_FILE"
   DEVICE_ID=$(openssl rand -hex 32)
-  TOKEN_1="gw-$(openssl rand -hex 24)"
-  TOKEN_2="gw-$(openssl rand -hex 24)"
   ADMIN_TOKEN=$(openssl rand -hex 16)
   echo "$ADMIN_TOKEN" > "$GW_DATA/.admin-token"
   chmod 600 "$GW_DATA/.admin-token"
@@ -82,10 +80,9 @@ if [ ! -s "$CONFIG_FILE" ]; then
     const config = yaml.parse(fs.readFileSync('$CONFIG_FILE', 'utf-8'));
     config.server = { port: 8443, tls: { cert: '$CERTS_DIR/cert.pem', key: '$CERTS_DIR/key.pem' } };
     config.identity.device_id = '$DEVICE_ID';
-    if (config.auth && config.auth.tokens) {
-      config.auth.tokens[0].token = '$TOKEN_1';
-      if (config.auth.tokens[1]) config.auth.tokens[1].token = '$TOKEN_2';
-    }
+    config.auth = config.auth || {};
+    config.auth.default_mode = 'medium';
+    config.auth.tokens = [];
     config.admin = { token: '$ADMIN_TOKEN', auto_register: true };
     config.logging = { level: 'info', audit: true, audit_dir: '$GW_DATA/audit', audit_max_days: 30, audit_max_size_mb: 500 };
     config.rate_limit = { default_requests_per_minute: 6000, default_requests_per_hour: 360000 };
