@@ -55,8 +55,8 @@ eval "$(fzf --zsh)"
 
 # ── void-claude ─────────────────────────────────────────────────
 alias gateway-start='/opt/gateway-start.sh'
-alias gateway-stop='kill $(cat /tmp/cc-gateway.pid 2>/dev/null) 2>/dev/null && echo "Gateway stopped" || echo "Gateway not running"'
-alias gateway-logs='tail -f /tmp/cc-gateway.log'
+alias gateway-stop='kill $(cat /tmp/void-claude.pid 2>/dev/null) 2>/dev/null && echo "Gateway stopped" || echo "Gateway not running"'
+alias gateway-logs='tail -f /tmp/void-claude.log'
 alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | python3 -m json.tool || echo "Gateway not running"'
 alias gateway-restart='gateway-stop; sleep 1; gateway-start'
 alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'

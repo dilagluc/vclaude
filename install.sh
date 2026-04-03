@@ -217,6 +217,8 @@ cmd_template() {
   cp "$SCRIPT_DIR/devcontainer.json" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/post_install.py" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/.zshrc" "$devcontainer_dir/"
+  cp "$SCRIPT_DIR/gateway-start.sh" "$devcontainer_dir/"
+  [[ -d "$SCRIPT_DIR/_gateway" ]] && cp -r "$SCRIPT_DIR/_gateway" "$devcontainer_dir/"
 
   # Restore preserved mounts
   if [[ -n "$preserved_mounts" ]]; then

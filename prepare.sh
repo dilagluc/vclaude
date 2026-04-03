@@ -8,7 +8,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GW_SRC="${GW_SRC:-$(cd "$SCRIPT_DIR/../void-claude" 2>/dev/null && pwd || echo "")}"
+GW_SRC="${GW_SRC:-$(cd "$SCRIPT_DIR/../cc-gateway" 2>/dev/null && pwd || echo "")}"
 STAGING="$SCRIPT_DIR/_gateway"
 
 if [ ! -f "$GW_SRC/package.json" ]; then
