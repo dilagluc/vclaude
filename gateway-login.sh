@@ -177,6 +177,24 @@ if [ -f "$CLIENT_TOKEN_FILE" ]; then
   export ANTHROPIC_API_KEY=$(cat "$CLIENT_TOKEN_FILE")
 
   # Clear claude's OAuth credentials so it uses ANTHROPIC_API_KEY only
-  # (prevents "Detected a custom API key" prompt)
   rm -f "$HOME/.claude/.credentials.json" 2>/dev/null
+
+  # Pre-approve the API key in claude's config (skips "Detected custom API key" prompt)
+  # Claude checks the last 24 chars of the key against customApiKeyResponses.approved
+  _KEY_TRUNCATED=$(echo -n "$ANTHROPIC_API_KEY" | tail -c 24)
+  node -e "
+    const fs = require('fs');
+    const p = process.env.HOME + '/.claude/.claude.json';
+    let config = {};
+    try { config = JSON.parse(fs.readFileSync(p, 'utf-8')); } catch(e) {}
+    config.customApiKeyResponses = config.customApiKeyResponses || {};
+    config.customApiKeyResponses.approved = config.customApiKeyResponses.approved || [];
+    const trunc = '$_KEY_TRUNCATED';
+    if (!config.customApiKeyResponses.approved.includes(trunc)) {
+      config.customApiKeyResponses.approved.push(trunc);
+    }
+    config.hasCompletedOnboarding = true;
+    fs.mkdirSync(process.env.HOME + '/.claude', { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(config, null, 2));
+  " 2>/dev/null
 fi
