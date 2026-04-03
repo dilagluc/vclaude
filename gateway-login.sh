@@ -176,12 +176,25 @@ rl.question("  Paste the code here: ", (code) => {
 if [ -f "$CLIENT_TOKEN_FILE" ]; then
   export ANTHROPIC_API_KEY=$(cat "$CLIENT_TOKEN_FILE")
 
-  # Clear claude's OAuth credentials so it uses ANTHROPIC_API_KEY only
+  # Clear ALL OAuth state so claude uses ANTHROPIC_API_KEY (x-api-key), not OAuth Bearer
+  # If OAuth tokens exist, isClaudeAISubscriber() returns true and claude sends
+  # Authorization: Bearer instead of x-api-key — which the gateway can't handle
   rm -f "$HOME/.claude/.credentials.json" 2>/dev/null
+  # Clear keychain-cached tokens
+  node -e "
+    const fs = require('fs');
+    const p = process.env.HOME + '/.claude/.claude.json';
+    try {
+      let c = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      delete c.claudeAiOauth;
+      delete c.oauthAccount;
+      fs.writeFileSync(p, JSON.stringify(c, null, 2));
+    } catch(e) {}
+  " 2>/dev/null
 
   # Pre-approve the API key in claude's config (skips "Detected custom API key" prompt)
-  # Claude checks the last 24 chars of the key against customApiKeyResponses.approved
-  _KEY_TRUNCATED=$(echo -n "$ANTHROPIC_API_KEY" | tail -c 24)
+  # Claude truncates to last 20 chars (src/utils/authPortable.ts:normalizeApiKeyForConfig)
+  _KEY_TRUNCATED=$(echo -n "$ANTHROPIC_API_KEY" | tail -c 20)
   node -e "
     const fs = require('fs');
     const p = process.env.HOME + '/.claude/.claude.json';

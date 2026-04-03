@@ -84,6 +84,11 @@ export ANTHROPIC_BASE_URL="https://localhost:8443"
 [ -f "/opt/.gateway-data/certs/ca.crt" ] && export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
 [ -f "/opt/.gateway-data/.client-token" ] && export ANTHROPIC_API_KEY=$(cat /opt/.gateway-data/.client-token)
 
+# Unset any OAuth env vars so claude uses x-api-key exclusively
+unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
+unset CLAUDE_CODE_OAUTH_TOKEN 2>/dev/null
+unset CLAUDE_CODE_OAUTH_REFRESH_TOKEN 2>/dev/null
+
 # Show status on shell open
 if [ -x /opt/void-claude/void-claude ]; then
   _health=$(curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
