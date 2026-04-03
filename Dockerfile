@@ -51,7 +51,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-${FZF_ARCH}.tar.gz" | tar -xz -C /usr/local/bin
 
 # Create directories
-RUN mkdir -p /commandhistory /workspace /home/vscode/.claude /opt/void-claude /opt/.gateway-data && \
+RUN mkdir -p /commandhistory /workspace /home/vscode/.claude /opt/void-claude /opt/.gateway-data/certs /opt/.gateway-data/audit && \
   touch /commandhistory/.bash_history /commandhistory/.zsh_history && \
   chown -R vscode:vscode /commandhistory /workspace /home/vscode/.claude /opt/void-claude /opt/.gateway-data
 

@@ -53,7 +53,7 @@ _fzf_compgen_dir() {
 
 eval "$(fzf --zsh)"
 
-# ── void-claude ─────────────────────────────────────────────────
+# ── void-claude gateway ─────────────────────────────────────────
 alias gateway-start='/opt/gateway-start.sh'
 alias gateway-stop='kill $(cat /tmp/void-claude.pid 2>/dev/null) 2>/dev/null && echo "Gateway stopped" || echo "Gateway not running"'
 alias gateway-logs='tail -f /tmp/void-claude.log'
@@ -61,11 +61,23 @@ alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | pyth
 alias gateway-restart='gateway-stop; sleep 1; gateway-start'
 alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'
 
-# Smart claude wrapper: if gateway is down, bypass it for /login
+# Set gateway env vars only if certs exist (avoids SSL errors before first setup)
+export ANTHROPIC_BASE_URL="https://localhost:8443"
+if [ -f "/opt/.gateway-data/certs/ca.crt" ]; then
+  export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
+fi
+
+# Smart claude wrapper: bypasses gateway when it's down or for /login
 claude() {
-  if [[ "$1" == "/login" ]] || ! curl -sk https://localhost:8443/_health >/dev/null 2>&1; then
+  if [[ "$1" == "/login" ]] || ! curl -sk --connect-timeout 1 https://localhost:8443/_health >/dev/null 2>&1; then
     # Gateway not running or doing login — talk directly to Anthropic
     ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
+    # After login, try to start gateway automatically
+    if [[ "$1" == "/login" ]]; then
+      echo ""
+      echo "[void-claude] Starting gateway with fresh credentials..."
+      /opt/gateway-start.sh
+    fi
   else
     command claude "$@"
   fi
