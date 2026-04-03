@@ -91,6 +91,7 @@ if [ ! -s "$CONFIG_FILE" ]; then
     config.logging.audit_dir = '$GW_DATA/audit';
     config.logging.audit_max_days = 30;
     config.logging.audit_max_size_mb = 500;
+    config.rate_limit = { default_requests_per_minute: 6000, default_requests_per_hour: 360000 };
 
     fs.writeFileSync('$CONFIG_FILE', yaml.stringify(config));
   " 2>/dev/null || echo "[gateway] WARNING: config generation used fallback (no yaml module)"
