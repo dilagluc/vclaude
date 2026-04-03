@@ -185,37 +185,19 @@ gateway_alive() {
 }
 
 # ══════════════════════════════════════════════════════════════
-# Phase 2: Wait for OAuth token
+# Phase 2: Start gateway immediately (degraded mode if no token)
 # ══════════════════════════════════════════════════════════════
 
 TOKEN=$(get_oauth_token)
-if [ -z "$TOKEN" ]; then
-  log "Waiting for OAuth token... Run 'claude' to login"
-  while true; do
-    TOKEN=$(get_oauth_token)
-    [ -n "$TOKEN" ] && break
-    sleep 5
-  done
-  log "OAuth token detected"
-
-  # Wait for claude to exit (it rotates the token during its session)
-  # Read the LATEST token after claude is done
-  log "Waiting for claude to finish (token may rotate)..."
-  sleep 3
-  while pgrep -x claude >/dev/null 2>&1; do
-    sleep 2
-  done
-  sleep 1
-
-  # Re-read token (claude updates credentials.json on exit with rotated token)
-  TOKEN=$(get_oauth_token)
-  log "Token ready (after claude exit)"
+if [ -n "$TOKEN" ]; then
+  inject_token "$TOKEN"
 fi
-
-# Inject and start
-inject_token "$TOKEN"
 start_gateway
 CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
+
+if [ -z "$TOKEN" ]; then
+  log "Gateway started in degraded mode. Run 'claude' to login — gateway will auto-activate."
+fi
 
 # ══════════════════════════════════════════════════════════════
 # Phase 3: Monitor loop (runs forever)
@@ -224,51 +206,43 @@ CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
 while true; do
   sleep 5
 
-  # Check if credentials.json changed (user did /login again)
+  # Check if credentials.json changed (user did /login or token rotated)
   NEW_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
   if [ "$NEW_MTIME" != "$CREDS_MTIME" ]; then
     CREDS_MTIME="$NEW_MTIME"
+    # Wait for claude to finish writing (avoid reading mid-write)
+    sleep 2
     NEW_TOKEN=$(get_oauth_token)
     if [ -n "$NEW_TOKEN" ]; then
-      log "Credentials updated, re-injecting token and restarting gateway"
+      log "Credentials updated, injecting token into config"
       inject_token "$NEW_TOKEN"
+      # Gateway hot-reload will pick up the new token and re-init OAuth
+      # Give it a moment
+      sleep 3
+      if gateway_healthy; then
+        log "Gateway activated with new token"
+        continue
+      fi
+      # If hot-reload didn't work, restart
+      log "Hot-reload didn't activate OAuth, restarting gateway"
+      if gateway_alive; then
+        kill "$(cat "$GW_PID_FILE")" 2>/dev/null
+        sleep 1
+      fi
       start_gateway
       continue
     fi
   fi
 
-  # Health check — "ok" means gateway running AND oauth valid
-  if gateway_healthy; then
+  # Check gateway process is alive
+  if ! gateway_alive; then
+    log "Gateway process died, restarting"
+    TOKEN=$(get_oauth_token)
+    [ -n "$TOKEN" ] && inject_token "$TOKEN"
+    start_gateway || { log "Restart failed, retrying in 15s"; sleep 15; }
     continue
   fi
 
-  # Not healthy — kill whatever is running and restart fresh
-  if gateway_alive; then
-    log "Gateway unhealthy, restarting with fresh credentials"
-    kill "$(cat "$GW_PID_FILE")" 2>/dev/null
-    sleep 1
-  else
-    log "Gateway process not running"
-  fi
-
-  # Always re-read credentials before restart (token may have rotated)
-  TOKEN=$(get_oauth_token)
-  if [ -n "$TOKEN" ]; then
-    inject_token "$TOKEN"
-    CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
-    start_gateway || {
-      log "Restart failed, retrying in 15s"
-      sleep 15
-    }
-  else
-    log "No token available, waiting for login..."
-    while true; do
-      TOKEN=$(get_oauth_token)
-      [ -n "$TOKEN" ] && break
-      sleep 5
-    done
-    inject_token "$TOKEN"
-    CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
-    start_gateway
-  fi
+  # If gateway alive but not healthy (degraded/no OAuth), that's fine — waiting for token
+  # No need to restart, it'll pick up token via hot-reload when watchdog injects it
 done

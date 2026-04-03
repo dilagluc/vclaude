@@ -80,11 +80,14 @@ alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'
 export ANTHROPIC_BASE_URL="https://localhost:8443"
 [ -f "/opt/.gateway-data/certs/ca.crt" ] && export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
 
-# Claude wrapper: bypass gateway when it's down (watchdog handles the rest)
+# Claude wrapper: route through gateway only when fully healthy (OAuth valid)
 claude() {
-  if curl -sk --connect-timeout 1 https://localhost:8443/_health >/dev/null 2>&1; then
+  local health
+  health=$(curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
+  if echo "$health" | grep -q '"ok"'; then
     command claude "$@"
   else
+    # Gateway down or degraded — bypass, talk direct to Anthropic
     ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
   fi
 }
