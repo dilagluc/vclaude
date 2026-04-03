@@ -60,9 +60,33 @@ console.log("  2. Sign in with your Anthropic account");
 console.log("  3. Copy the code shown on the page");
 console.log("");
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-rl.question("  Paste the code here: ", (code) => {
-  rl.close();
+// Read code with masking (show first 4 chars + asterisks)
+process.stdout.write("  Paste the code here: ");
+let code = "";
+process.stdin.setRawMode(true);
+process.stdin.resume();
+process.stdin.setEncoding("utf-8");
+process.stdin.on("data", (ch) => {
+  if (ch === "\r" || ch === "\n") {
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+    process.stdout.write("\n");
+    handleCode();
+  } else if (ch === "\x03") { // Ctrl+C
+    process.stdout.write("\n");
+    process.exit(0);
+  } else if (ch === "\x7f" || ch === "\b") { // Backspace
+    if (code.length > 0) {
+      code = code.slice(0, -1);
+      process.stdout.write("\b \b");
+    }
+  } else {
+    code += ch;
+    // Show first 4 chars, mask the rest
+    process.stdout.write(code.length <= 4 ? ch : "*");
+  }
+});
+function handleCode() {
   code = code.trim().split("#")[0];  // Strip #state fragment if browser appends it
   if (!code) { console.error("[void-claude] No code provided."); process.exit(1); }
 
@@ -169,7 +193,7 @@ rl.question("  Paste the code here: ", (code) => {
   req.on("error", (e) => { console.error("[void-claude] Request failed:", e.message); process.exit(1); });
   req.write(body);
   req.end();
-});
+}
 '
 
 # After node exits, set ANTHROPIC_API_KEY in the current shell
