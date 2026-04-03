@@ -142,6 +142,7 @@ logging:
 #     events: ["auth_failure", "rate_limit", "upstream_error"]
 
 # ── Rate Limiting ─────────────────────────────────────────────
-# rate_limit:
-#   default_requests_per_minute: 30
+rate_limit:
+  default_requests_per_minute: 6000
+  default_requests_per_hour: 360000
 #   default_requests_per_hour: 500
