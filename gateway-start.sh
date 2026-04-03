@@ -4,7 +4,7 @@
 # ║  Generates certs, config, extracts OAuth, starts gateway    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-set -e
+# No set -e — gateway start is best-effort, must not block container startup
 
 GW_BIN="/opt/void-claude/void-claude"
 GW_DATA="/opt/.gateway-data"
@@ -155,3 +155,5 @@ for i in $(seq 1 15); do
 done
 
 echo "[gateway] WARNING: started but health check failed — check: tail -f $LOG_FILE"
+echo "[gateway] Run 'claude /login' then 'gateway-start' to fix OAuth"
+exit 0
