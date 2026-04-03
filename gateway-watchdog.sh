@@ -197,6 +197,19 @@ if [ -z "$TOKEN" ]; then
     sleep 5
   done
   log "OAuth token detected"
+
+  # Wait for claude to exit (it rotates the token during its session)
+  # Read the LATEST token after claude is done
+  log "Waiting for claude to finish (token may rotate)..."
+  sleep 3
+  while pgrep -x claude >/dev/null 2>&1; do
+    sleep 2
+  done
+  sleep 1
+
+  # Re-read token (claude updates credentials.json on exit with rotated token)
+  TOKEN=$(get_oauth_token)
+  log "Token ready (after claude exit)"
 fi
 
 # Inject and start
