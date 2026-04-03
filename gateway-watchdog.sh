@@ -185,59 +185,16 @@ gateway_alive() {
 }
 
 # ══════════════════════════════════════════════════════════════
-# Phase 2: Acquire OAuth token if missing
+# Phase 2: Start gateway (degraded mode if no token)
 # ══════════════════════════════════════════════════════════════
 
 TOKEN=$(get_oauth_token)
-
-if [ -z "$TOKEN" ]; then
-  log "No OAuth token found. Running 'claude auth login' to authenticate..."
-  log ""
-  log "========================================================="
-
-  # Run claude auth login, capture the URL, wait for auth to complete
-  AUTH_OUTPUT_FILE="/tmp/void-claude-auth-output"
-  ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" claude auth login > "$AUTH_OUTPUT_FILE" 2>&1 &
-  AUTH_PID=$!
-
-  # Wait briefly for the URL to appear in output
-  sleep 2
-  if [ -f "$AUTH_OUTPUT_FILE" ]; then
-    AUTH_URL=$(grep -o 'https://claude.com/[^ ]*' "$AUTH_OUTPUT_FILE" | head -1)
-    if [ -n "$AUTH_URL" ]; then
-      log "Open this URL in your browser to authenticate:"
-      log ""
-      log "  $AUTH_URL"
-      log ""
-      log "========================================================="
-    fi
-    cat "$AUTH_OUTPUT_FILE" >> "$WD_LOG"
-  fi
-
-  # Wait for credentials.json to appear (user completes browser auth)
-  log "Waiting for authentication to complete..."
-  while true; do
-    TOKEN=$(get_oauth_token)
-    [ -n "$TOKEN" ] && break
-    # If auth process died, restart it
-    if ! kill -0 "$AUTH_PID" 2>/dev/null; then
-      log "Auth process exited. Check the URL above or run 'claude auth login' manually."
-      # Keep polling — user might login via another terminal
-    fi
-    sleep 3
-  done
-
-  # Kill the auth login process (no longer needed)
-  kill "$AUTH_PID" 2>/dev/null
-  rm -f "$AUTH_OUTPUT_FILE"
-  log "Authentication successful!"
+if [ -n "$TOKEN" ]; then
+  inject_token "$TOKEN"
+  log "Token found, starting gateway with OAuth"
+else
+  log "No token — starting gateway in degraded mode. Run 'gateway-login' to authenticate."
 fi
-
-# ══════════════════════════════════════════════════════════════
-# Phase 3: Start gateway with token
-# ══════════════════════════════════════════════════════════════
-
-inject_token "$TOKEN"
 start_gateway
 CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
 

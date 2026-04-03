@@ -220,6 +220,7 @@ cmd_template() {
   cp "$SCRIPT_DIR/gateway-start.sh" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/gateway-watchdog.sh" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/gateway-launch.sh" "$devcontainer_dir/"
+  cp "$SCRIPT_DIR/gateway-login.sh" "$devcontainer_dir/"
   [[ -d "$SCRIPT_DIR/_gateway" ]] && cp -r "$SCRIPT_DIR/_gateway" "$devcontainer_dir/"
 
   # Ensure .gateway-data/ exists on host for bind mount
@@ -313,6 +314,15 @@ cmd_upgrade() {
   log_success "Claude Code upgraded"
 }
 
+cmd_login() {
+  local workspace_folder
+  workspace_folder="$(get_workspace_folder)"
+
+  check_devcontainer_cli
+  log_info "Running gateway-login inside container..."
+  devcontainer exec --workspace-folder "$workspace_folder" /opt/gateway-login.sh
+}
+
 cmd_claude() {
   local workspace_folder
   workspace_folder="$(get_workspace_folder)"
@@ -355,14 +365,19 @@ check_gateway_or_explain() {
   watchdog_up=$(devcontainer exec --workspace-folder "$workspace_folder" \
     sh -c 'test -f /tmp/void-claude-watchdog.pid && kill -0 $(cat /tmp/void-claude-watchdog.pid) 2>/dev/null && echo yes' 2>/dev/null || echo "")
 
+  # Check if gateway is in degraded mode (running but no OAuth)
+  local degraded
+  degraded=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
+  if echo "$degraded" | grep -q '"degraded"'; then
+    log_warn "Gateway is in degraded mode (no OAuth token)"
+    log_info "Run: vclaude login"
+    return 1
+  fi
+
   if [[ "$has_creds" != "yes" ]]; then
     log_error "Gateway not running — no OAuth credentials"
-    echo ""
-    log_info "Login first:"
-    log_info "  vclaude shell"
-    log_info "  claude            (login when prompted)"
-    log_info ""
-    log_info "The watchdog will auto-start the gateway within seconds."
+    log_info "Run: vclaude login"
   elif [[ "$watchdog_up" == "yes" ]]; then
     log_warn "Gateway starting up (watchdog is running)..."
     log_info "Wait a few seconds and try again."
@@ -1002,6 +1017,9 @@ main() {
     ;;
   claude)
     cmd_claude "$@"
+    ;;
+  login)
+    cmd_login
     ;;
   admin)
     cmd_admin "$@"

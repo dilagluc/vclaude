@@ -68,17 +68,31 @@ _fzf_compgen_dir() {
 eval "$(fzf --zsh)"
 
 # ── void-claude gateway ─────────────────────────────────────────
+alias gateway-login='/opt/gateway-login.sh'
 alias gateway-start='/opt/gateway-start.sh'
 alias gateway-stop='kill $(cat /tmp/void-claude.pid 2>/dev/null) 2>/dev/null && echo "Gateway stopped" || echo "Gateway not running"'
 alias gateway-logs='tail -f /tmp/void-claude.log'
 alias gateway-watchdog-logs='tail -f /tmp/void-claude-watchdog.log'
-alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | python3 -m json.tool || echo "Gateway not running (watchdog will auto-start when credentials exist)"'
+alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | python3 -m json.tool || echo "Gateway not running"'
 alias gateway-restart='/opt/gateway-start.sh'
 alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'
 
 # Gateway env vars — set conditionally
 export ANTHROPIC_BASE_URL="https://localhost:8443"
 [ -f "/opt/.gateway-data/certs/ca.crt" ] && export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
+
+# Show degraded mode hint (once per shell, non-blocking)
+if [ -x /opt/void-claude/void-claude ]; then
+  _health=$(curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
+  if echo "$_health" | grep -q '"degraded"'; then
+    echo ""
+    echo "  [void-claude] Gateway running — no OAuth token yet"
+    echo "  [void-claude] Run 'gateway-login' to authenticate"
+    echo ""
+  elif echo "$_health" | grep -q '"ok"'; then
+    echo "  [void-claude] Gateway active — all traffic anonymized"
+  fi
+fi
 
 # Claude wrapper: route through gateway only when fully healthy (OAuth valid)
 claude() {
