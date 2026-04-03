@@ -316,9 +316,23 @@ cmd_claude() {
   workspace_folder="$(get_workspace_folder)"
 
   check_devcontainer_cli
-  log_info "Launching Claude Code (routed through void-claude)..."
 
-  devcontainer exec --workspace-folder "$workspace_folder" claude "$@"
+  # Check if gateway is running inside the container
+  local gw_up
+  gw_up=$(devcontainer exec --workspace-folder "$workspace_folder" curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
+
+  if [[ -z "$gw_up" ]] || ! echo "$gw_up" | grep -q "ok"; then
+    # Gateway not running — bypass it so claude can talk to Anthropic directly (for login)
+    log_info "Gateway not running — launching Claude Code directly..."
+    devcontainer exec --workspace-folder "$workspace_folder" \
+      env ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" claude "$@"
+    # After claude exits, try to start gateway
+    log_info "Starting gateway with fresh credentials..."
+    devcontainer exec --workspace-folder "$workspace_folder" /opt/gateway-start.sh || true
+  else
+    log_info "Launching Claude Code (routed through void-claude)..."
+    devcontainer exec --workspace-folder "$workspace_folder" claude "$@"
+  fi
 }
 
 cmd_admin() {
