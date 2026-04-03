@@ -77,31 +77,22 @@ alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | pyth
 alias gateway-restart='/opt/gateway-start.sh'
 alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'
 
-# Gateway env vars — set conditionally
+# ── Gateway env vars ────────────────────────────────────────────
+# ANTHROPIC_API_KEY → claude uses x-api-key header (no OAuth on client side)
+# Gateway validates the client token and injects real OAuth Bearer token
 export ANTHROPIC_BASE_URL="https://localhost:8443"
 [ -f "/opt/.gateway-data/certs/ca.crt" ] && export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
+[ -f "/opt/.gateway-data/.client-token" ] && export ANTHROPIC_API_KEY=$(cat /opt/.gateway-data/.client-token)
 
-# Show degraded mode hint (once per shell, non-blocking)
+# Show status on shell open
 if [ -x /opt/void-claude/void-claude ]; then
   _health=$(curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
-  if echo "$_health" | grep -q '"degraded"'; then
+  if echo "$_health" | grep -q '"ok"'; then
+    echo "  [void-claude] Gateway active — all traffic anonymized"
+  elif echo "$_health" | grep -q '"degraded"'; then
     echo ""
     echo "  [void-claude] Gateway running — no OAuth token yet"
     echo "  [void-claude] Run 'gateway-login' to authenticate"
     echo ""
-  elif echo "$_health" | grep -q '"ok"'; then
-    echo "  [void-claude] Gateway active — all traffic anonymized"
   fi
 fi
-
-# Claude wrapper: route through gateway only when fully healthy (OAuth valid)
-claude() {
-  local health
-  health=$(curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
-  if echo "$health" | grep -q '"ok"'; then
-    command claude "$@"
-  else
-    # Gateway down or degraded — bypass, talk direct to Anthropic
-    ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
-  fi
-}

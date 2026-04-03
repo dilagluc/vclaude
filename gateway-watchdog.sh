@@ -199,49 +199,17 @@ start_gateway
 CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
 
 # ══════════════════════════════════════════════════════════════
-# Phase 3: Monitor loop (runs forever)
+# Phase 3: Monitor — restart on crash, that's it
+# Token management handled by gateway-login + gateway hot-reload
 # ══════════════════════════════════════════════════════════════
 
 while true; do
   sleep 5
 
-  # Check if credentials.json changed (user did /login or token rotated)
-  NEW_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
-  if [ "$NEW_MTIME" != "$CREDS_MTIME" ]; then
-    CREDS_MTIME="$NEW_MTIME"
-    # Wait for claude to finish writing (avoid reading mid-write)
-    sleep 2
-    NEW_TOKEN=$(get_oauth_token)
-    if [ -n "$NEW_TOKEN" ]; then
-      log "Credentials updated, injecting token into config"
-      inject_token "$NEW_TOKEN"
-      # Gateway hot-reload will pick up the new token and re-init OAuth
-      # Give it a moment
-      sleep 3
-      if gateway_healthy; then
-        log "Gateway activated with new token"
-        continue
-      fi
-      # If hot-reload didn't work, restart
-      log "Hot-reload didn't activate OAuth, restarting gateway"
-      if gateway_alive; then
-        kill "$(cat "$GW_PID_FILE")" 2>/dev/null
-        sleep 1
-      fi
-      start_gateway
-      continue
-    fi
-  fi
-
-  # Check gateway process is alive
   if ! gateway_alive; then
     log "Gateway process died, restarting"
     TOKEN=$(get_oauth_token)
     [ -n "$TOKEN" ] && inject_token "$TOKEN"
     start_gateway || { log "Restart failed, retrying in 15s"; sleep 15; }
-    continue
   fi
-
-  # If gateway alive but not healthy (degraded/no OAuth), that's fine — waiting for token
-  # No need to restart, it'll pick up token via hot-reload when watchdog injects it
 done
