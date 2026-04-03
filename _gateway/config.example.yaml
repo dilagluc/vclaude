@@ -26,21 +26,13 @@ oauth:
 # Generate tokens: npm run generate-token
 auth:
   default_mode: medium
-  tokens:
-    - name: machine-a
-      token: change-me-token-1
-      mode: low
-    - name: machine-b
-      token: change-me-token-2
-      mode: hard
-      overrides:
-        forward_mcp_servers: true
-      # Per-client prompt rules (applied AFTER global rules)
-      prompt_rules:
-        - action: add
-          anchor: "You are Claude Code"
-          position: after
-          value: "\nAlways respond in French."
+  tokens: []
+  # Clients are auto-registered on first connect (auto_register: true)
+  # You can also add clients manually:
+  # tokens:
+  #   - name: my-machine
+  #     token: gw-some-token
+  #     mode: medium
 
 # Canonical identity - all clients will appear as this single device
 # Generate a fresh identity: npm run generate-identity
