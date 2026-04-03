@@ -1,6 +1,20 @@
 # shellcheck shell=bash
 # Zsh configuration for void-claude devcontainer
 
+# ── Auto-restore .claude.json if corrupted ─────────────────────
+if [ ! -f "$HOME/.claude/.claude.json" ]; then
+  _backup=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+  [ -n "$_backup" ] && cp "$_backup" "$HOME/.claude/.claude.json" 2>/dev/null
+fi
+
+# ── Auto-start gateway watchdog if not running ─────────────────
+if [ -x /opt/gateway-watchdog.sh ]; then
+  if ! kill -0 "$(cat /tmp/void-claude-watchdog.pid 2>/dev/null)" 2>/dev/null; then
+    nohup /opt/gateway-watchdog.sh >> /tmp/void-claude-watchdog.log 2>&1 &
+    disown 2>/dev/null
+  fi
+fi
+
 # Add Claude Code to PATH
 export PATH="$HOME/.local/bin:$PATH"
 
