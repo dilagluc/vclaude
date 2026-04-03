@@ -5,6 +5,11 @@
 # ║  monitors health, restarts on crash.                         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
+# Ensure node is in PATH (fnm may not be initialized in non-interactive shells)
+export FNM_DIR="$HOME/.fnm"
+export PATH="$FNM_DIR:$HOME/.local/bin:$PATH"
+eval "$("$FNM_DIR/fnm" env 2>/dev/null)" 2>/dev/null || true
+
 GW_BIN="/opt/void-claude/void-claude"
 GW_DATA="/opt/.gateway-data"
 CERTS_DIR="$GW_DATA/certs"
