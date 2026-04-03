@@ -14,10 +14,32 @@ Based on [trailofbits/claude-code-devcontainer](https://github.com/trailofbits/c
 
 ---
 
+## Prerequisites
+
+- **Docker** — running on your machine (`docker info` to check)
+- **Git LFS** — required for the gateway binary (119MB)
+  ```bash
+  # Ubuntu/Debian
+  sudo apt-get install git-lfs
+
+  # macOS
+  brew install git-lfs
+
+  # Then initialize
+  git lfs install
+  ```
+- **GitHub access** — this is a private repo. Authenticate with:
+  ```bash
+  # Install GitHub CLI if needed: https://cli.github.com
+  gh auth login
+  # Pick: GitHub.com → HTTPS → Login with a web browser
+  # This stores credentials so git clone works over HTTPS (no SSH keys needed)
+  ```
+
 ## Install
 
 ```bash
-# Clone the repo
+# Clone the repo (requires git-lfs + GitHub auth)
 git clone https://github.com/dilagluc/vclaude.git ~/.vclaude
 
 # Install the vclaude command to PATH
