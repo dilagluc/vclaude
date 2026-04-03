@@ -68,7 +68,7 @@ _fzf_compgen_dir() {
 eval "$(fzf --zsh)"
 
 # ── void-claude gateway ─────────────────────────────────────────
-alias gateway-login='/opt/gateway-login.sh'
+alias gateway-login='source /opt/gateway-login.sh'
 alias gateway-start='/opt/gateway-start.sh'
 alias gateway-stop='kill $(cat /tmp/void-claude.pid 2>/dev/null) 2>/dev/null && echo "Gateway stopped" || echo "Gateway not running"'
 alias gateway-logs='tail -f /tmp/void-claude.log'

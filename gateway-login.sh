@@ -13,6 +13,9 @@ export FNM_DIR="$HOME/.fnm"
 export PATH="$FNM_DIR:$HOME/.local/bin:$PATH"
 eval "$("$FNM_DIR/fnm" env 2>/dev/null)" 2>/dev/null || true
 
+# This script should be SOURCED (not executed) so env vars take effect
+# The alias in .zshrc does: alias gateway-login='source /opt/gateway-login.sh'
+
 # ── Run the PKCE OAuth flow via node ───────────────────────────
 node -e '
 const crypto = require("crypto");
@@ -168,3 +171,8 @@ rl.question("  Paste the code here: ", (code) => {
   req.end();
 });
 '
+
+# After node exits, set ANTHROPIC_API_KEY in the current shell
+if [ -f "$CLIENT_TOKEN_FILE" ]; then
+  export ANTHROPIC_API_KEY=$(cat "$CLIENT_TOKEN_FILE")
+fi
