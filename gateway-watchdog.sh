@@ -196,8 +196,10 @@ while true; do
     CREDS_MTIME="$NEW_MTIME"
     NEW_TOKEN=$(get_oauth_token)
     if [ -n "$NEW_TOKEN" ]; then
-      log "Credentials updated, re-injecting token"
+      log "Credentials updated, re-injecting token and restarting gateway"
       inject_token "$NEW_TOKEN"
+      start_gateway
+      continue
     fi
   fi
 
