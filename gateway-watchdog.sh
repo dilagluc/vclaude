@@ -102,7 +102,20 @@ fi
 # ══════════════════════════════════════════════════════════════
 
 get_oauth_token() {
-  # Returns the refresh token from credentials.json, or empty string
+  # Priority 1: config.yaml (gateway persists rotated tokens here)
+  local from_config
+  from_config=$(node -e "
+    try {
+      const yaml = require('$YAML_MOD');
+      const fs = require('fs');
+      const c = yaml.parse(fs.readFileSync('$CONFIG_FILE', 'utf-8'));
+      const rt = c.oauth && c.oauth.refresh_token;
+      if (rt && rt.startsWith('sk-ant-') && rt !== 'your-refresh-token-here') process.stdout.write(rt);
+    } catch(e) {}
+  " 2>/dev/null)
+  [ -n "$from_config" ] && echo "$from_config" && return
+
+  # Priority 2: credentials.json (from claude login)
   node -e "
     try {
       const d = JSON.parse(require('fs').readFileSync('$CREDS_FILE', 'utf-8'));
