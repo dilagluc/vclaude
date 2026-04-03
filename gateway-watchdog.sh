@@ -156,7 +156,10 @@ start_gateway() {
 }
 
 gateway_healthy() {
-  curl -sk --connect-timeout 2 https://localhost:8443/_health >/dev/null 2>&1
+  local health
+  health=$(curl -sk --connect-timeout 2 https://localhost:8443/_health 2>/dev/null)
+  # Check both that gateway responds AND oauth is valid
+  echo "$health" | grep -q '"ok"'
 }
 
 gateway_alive() {
@@ -188,7 +191,7 @@ CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
 # ══════════════════════════════════════════════════════════════
 
 while true; do
-  sleep 10
+  sleep 5
 
   # Check if credentials.json changed (user did /login again)
   NEW_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
@@ -203,41 +206,38 @@ while true; do
     fi
   fi
 
-  # Health check
+  # Health check — "ok" means gateway running AND oauth valid
   if gateway_healthy; then
     continue
   fi
 
-  # Unhealthy — check if process is alive
+  # Not healthy — kill whatever is running and restart fresh
   if gateway_alive; then
-    # Process alive but unhealthy — might be mid-refresh, wait one cycle
-    sleep 5
-    if gateway_healthy; then
-      continue
-    fi
-    log "Gateway unhealthy, killing and restarting"
+    log "Gateway unhealthy, restarting with fresh credentials"
     kill "$(cat "$GW_PID_FILE")" 2>/dev/null
-    sleep 2
+    sleep 1
   else
-    log "Gateway process died"
+    log "Gateway process not running"
   fi
 
-  # Re-read token and restart
+  # Always re-read credentials before restart (token may have rotated)
   TOKEN=$(get_oauth_token)
   if [ -n "$TOKEN" ]; then
     inject_token "$TOKEN"
+    CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
     start_gateway || {
-      log "Restart failed, retrying in 30s"
-      sleep 30
+      log "Restart failed, retrying in 15s"
+      sleep 15
     }
   else
-    log "No token available, waiting..."
+    log "No token available, waiting for login..."
     while true; do
       TOKEN=$(get_oauth_token)
       [ -n "$TOKEN" ] && break
       sleep 5
     done
     inject_token "$TOKEN"
+    CREDS_MTIME=$(stat -c %Y "$CREDS_FILE" 2>/dev/null || echo "0")
     start_gateway
   fi
 done
