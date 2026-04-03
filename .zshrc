@@ -60,3 +60,13 @@ alias gateway-logs='tail -f /tmp/void-claude.log'
 alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | python3 -m json.tool || echo "Gateway not running"'
 alias gateway-restart='gateway-stop; sleep 1; gateway-start'
 alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'
+
+# Smart claude wrapper: if gateway is down, bypass it for /login
+claude() {
+  if [[ "$1" == "/login" ]] || ! curl -sk https://localhost:8443/_health >/dev/null 2>&1; then
+    # Gateway not running or doing login — talk directly to Anthropic
+    ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
+  else
+    command claude "$@"
+  fi
+}

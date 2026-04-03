@@ -4,7 +4,7 @@
 # ║  Generates certs, config, extracts OAuth, starts gateway    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-# No set -e — gateway start is best-effort, must not block container startup
+# Never fail — gateway is best-effort, must not block container startup
 
 GW_BIN="/opt/void-claude/void-claude"
 GW_DATA="/opt/.gateway-data"
@@ -21,8 +21,16 @@ if [ ! -x "$GW_BIN" ]; then
   exit 0
 fi
 
-# ── Create data dirs ───────────────────────────────────────────
-mkdir -p "$CERTS_DIR" "$GW_DATA/audit"
+# ── Create data dirs (handle permission issues) ────────────────
+mkdir -p "$CERTS_DIR" "$GW_DATA/audit" 2>/dev/null || \
+  sudo mkdir -p "$CERTS_DIR" "$GW_DATA/audit" 2>/dev/null && \
+  sudo chown -R "$(id -u):$(id -g)" "$GW_DATA" 2>/dev/null
+
+if [ ! -d "$CERTS_DIR" ]; then
+  echo "[gateway] ERROR: Cannot create $CERTS_DIR"
+  echo "[gateway] Try: sudo mkdir -p $CERTS_DIR && sudo chown -R \$(id -u) $GW_DATA"
+  exit 0
+fi
 
 # ── Generate TLS certs if missing ──────────────────────────────
 if [ ! -f "$CERTS_DIR/cert.pem" ] || [ ! -f "$CERTS_DIR/key.pem" ]; then
@@ -65,11 +73,9 @@ if [ ! -s "$CONFIG_FILE" ]; then
   TOKEN_2="gw-$(openssl rand -hex 24)"
   ADMIN_TOKEN=$(openssl rand -hex 16)
 
-  # Save admin token for CLI access
   echo "$ADMIN_TOKEN" > "$ADMIN_TOKEN_FILE"
   chmod 600 "$ADMIN_TOKEN_FILE"
 
-  # Use node (available in devcontainer) for safe YAML editing
   node -e "
     const yaml = require('/opt/void-claude/node_modules/yaml');
     const fs = require('fs');
@@ -94,7 +100,7 @@ if [ ! -s "$CONFIG_FILE" ]; then
     config.rate_limit = { default_requests_per_minute: 6000, default_requests_per_hour: 360000 };
 
     fs.writeFileSync('$CONFIG_FILE', yaml.stringify(config));
-  " 2>/dev/null || echo "[gateway] WARNING: config generation used fallback (no yaml module)"
+  " 2>/dev/null || echo "[gateway] WARNING: config generation failed"
 
   echo ""
   echo "  ┌──────────────────────────────────────────────────────────┐"
@@ -108,6 +114,8 @@ if [ ! -s "$CONFIG_FILE" ]; then
 fi
 
 # ── Inject OAuth token from Claude credentials ─────────────────
+HAS_VALID_TOKEN="no"
+
 if [ -f "$CREDS_FILE" ]; then
   REFRESH_TOKEN=$(node -e "
     try {
@@ -118,16 +126,42 @@ if [ -f "$CREDS_FILE" ]; then
   " 2>/dev/null)
 
   if [ -n "$REFRESH_TOKEN" ]; then
-    _OAUTH_TOKEN="$REFRESH_TOKEN" node -e "
+    export _OAUTH_TOKEN="$REFRESH_TOKEN"
+    node -e "
       const yaml = require('/opt/void-claude/node_modules/yaml');
       const fs = require('fs');
-      const config = yaml.parse(fs.readFileSync(process.env._CONFIG_FILE || '$CONFIG_FILE', 'utf-8'));
+      const config = yaml.parse(fs.readFileSync('$CONFIG_FILE', 'utf-8'));
       config.oauth = config.oauth || {};
       config.oauth.refresh_token = process.env._OAUTH_TOKEN;
       fs.writeFileSync('$CONFIG_FILE', yaml.stringify(config));
-    " 2>&1 || echo "[gateway] WARNING: failed to inject OAuth token"
-    echo "[gateway] OAuth token extracted from credentials"
+    " 2>/dev/null && HAS_VALID_TOKEN="yes" && echo "[gateway] OAuth token extracted from credentials"
+    unset _OAUTH_TOKEN
   fi
+fi
+
+# Check if config has a real token (might have been set manually or from previous run)
+if [ "$HAS_VALID_TOKEN" = "no" ]; then
+  HAS_VALID_TOKEN=$(node -e "
+    const yaml = require('/opt/void-claude/node_modules/yaml');
+    const fs = require('fs');
+    const c = yaml.parse(fs.readFileSync('$CONFIG_FILE', 'utf-8'));
+    const rt = c.oauth && c.oauth.refresh_token;
+    if (rt && rt.startsWith('sk-ant-') && rt !== 'your-refresh-token-here') process.stdout.write('yes');
+  " 2>/dev/null)
+fi
+
+if [ "$HAS_VALID_TOKEN" != "yes" ]; then
+  echo ""
+  echo "  ┌──────────────────────────────────────────────────────────┐"
+  echo "  │  No OAuth token found. To set up:                        │"
+  echo "  │                                                          │"
+  echo "  │    1. Run:  claude /login                                │"
+  echo "  │    2. Run:  gateway-start                                │"
+  echo "  │                                                          │"
+  echo "  │  That's it. Gateway will auto-extract the token.         │"
+  echo "  └──────────────────────────────────────────────────────────┘"
+  echo ""
+  exit 0
 fi
 
 # ── Kill old gateway if running ────────────────────────────────
@@ -154,6 +188,13 @@ for i in $(seq 1 15); do
   sleep 1
 done
 
-echo "[gateway] WARNING: started but health check failed — check: tail -f $LOG_FILE"
-echo "[gateway] Run 'claude /login' then 'gateway-start' to fix OAuth"
+# Check if process died
+if ! kill -0 "$GW_PID" 2>/dev/null; then
+  echo "[gateway] Gateway process died. Log:"
+  tail -5 "$LOG_FILE" 2>/dev/null
+  echo ""
+  echo "[gateway] Likely OAuth token expired. Run: claude /login && gateway-start"
+else
+  echo "[gateway] WARNING: started but health check timed out — check: gateway-logs"
+fi
 exit 0
