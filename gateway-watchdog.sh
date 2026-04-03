@@ -22,7 +22,7 @@ WD_PID_FILE="/tmp/void-claude-watchdog.pid"
 YAML_MOD="/opt/void-claude/node_modules/yaml"
 
 # ── Logging ────────────────────────────────────────────────────
-log() { echo "[$(date -u +%H:%M:%S)] [watchdog] $1" | tee -a "$WD_LOG"; }
+log() { echo "[$(date -u +%H:%M:%S)] [watchdog] $1" >> "$WD_LOG"; }
 
 # ── Single instance lock ──────────────────────────────────────
 LOCK_FILE="/tmp/void-claude-watchdog.lock"
