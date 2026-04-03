@@ -118,14 +118,14 @@ if [ -f "$CREDS_FILE" ]; then
   " 2>/dev/null)
 
   if [ -n "$REFRESH_TOKEN" ]; then
-    node -e "
+    _OAUTH_TOKEN="$REFRESH_TOKEN" node -e "
       const yaml = require('/opt/void-claude/node_modules/yaml');
       const fs = require('fs');
-      const config = yaml.parse(fs.readFileSync('$CONFIG_FILE', 'utf-8'));
+      const config = yaml.parse(fs.readFileSync(process.env._CONFIG_FILE || '$CONFIG_FILE', 'utf-8'));
       config.oauth = config.oauth || {};
-      config.oauth.refresh_token = '$REFRESH_TOKEN';
+      config.oauth.refresh_token = process.env._OAUTH_TOKEN;
       fs.writeFileSync('$CONFIG_FILE', yaml.stringify(config));
-    " 2>/dev/null
+    " 2>&1 || echo "[gateway] WARNING: failed to inject OAuth token"
     echo "[gateway] OAuth token extracted from credentials"
   fi
 fi
