@@ -342,15 +342,58 @@ cmd_admin() {
   check_devcontainer_cli
 
   if [[ "${1:-}" == "--expose" ]]; then
-    log_info "Forwarding gateway port 8443 to host..."
-    log_info "Dashboard: https://localhost:8443/_dashboard"
-    log_info "Press Ctrl+C to stop forwarding"
-    devcontainer exec --workspace-folder "$workspace_folder" \
-      socat TCP-LISTEN:18443,fork,reuseaddr TCP:localhost:8443 &
-    SOCAT_PID=$!
-    log_success "Gateway admin available at https://localhost:18443"
-    log_info "Dashboard: https://localhost:18443/_dashboard"
-    wait "$SOCAT_PID" 2>/dev/null
+    # Find the container ID
+    local label="devcontainer.local_folder=$workspace_folder"
+    local container_id
+    container_id=$(docker ps -q --filter "label=$label" 2>/dev/null | head -1)
+    if [[ -z "$container_id" ]]; then
+      log_error "Container not found. Is it running?"
+      exit 1
+    fi
+
+    local port="${2:-18443}"
+    log_info "Forwarding container:8443 → host:$port"
+    log_info "Dashboard: https://localhost:$port/_dashboard"
+    log_info "Press Ctrl+C to stop"
+    echo ""
+
+    # Use socat on host if available, otherwise python
+    if command -v socat &>/dev/null; then
+      socat "TCP-LISTEN:$port,fork,reuseaddr" \
+        "EXEC:docker exec -i $container_id socat STDIO TCP\:localhost\:8443" &
+    else
+      # Python fallback — TCP proxy
+      python3 -c "
+import socket, threading, subprocess, sys
+def proxy(client):
+    proc = subprocess.Popen(['docker','exec','-i','$container_id','socat','STDIO','TCP:localhost:8443'],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    def c2s():
+        while True:
+            d = client.recv(65536)
+            if not d: break
+            proc.stdin.write(d); proc.stdin.flush()
+        proc.stdin.close()
+    def s2c():
+        while True:
+            d = proc.stdout.read(65536)
+            if not d: break
+            client.sendall(d)
+        client.close()
+    threading.Thread(target=c2s,daemon=True).start()
+    s2c()
+srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind(('127.0.0.1',$port)); srv.listen(5)
+print('Listening on https://localhost:$port')
+while True:
+    c,_ = srv.accept()
+    threading.Thread(target=proxy,args=(c,),daemon=True).start()
+" &
+    fi
+
+    PROXY_PID=$!
+    log_success "Proxy running (PID $PROXY_PID)"
+    wait "$PROXY_PID" 2>/dev/null
   else
     # Print stats + client list
     echo ""
