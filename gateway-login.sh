@@ -175,4 +175,8 @@ rl.question("  Paste the code here: ", (code) => {
 # After node exits, set ANTHROPIC_API_KEY in the current shell
 if [ -f "$CLIENT_TOKEN_FILE" ]; then
   export ANTHROPIC_API_KEY=$(cat "$CLIENT_TOKEN_FILE")
+
+  # Clear claude's OAuth credentials so it uses ANTHROPIC_API_KEY only
+  # (prevents "Detected a custom API key" prompt)
+  rm -f "$HOME/.claude/.credentials.json" 2>/dev/null
 fi
