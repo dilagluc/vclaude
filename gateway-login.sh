@@ -17,18 +17,24 @@ echo ""
 echo "  ┌──────────────────────────────────────────────────────────┐"
 echo "  │  void-claude — OAuth Authentication                       │"
 echo "  │                                                          │"
-echo "  │  A URL will appear below. Open it in your browser        │"
-echo "  │  to authenticate with your Anthropic account.            │"
+echo "  │  A URL will appear below. Open it in your browser.       │"
+echo "  │  After authenticating, the token is captured              │"
+echo "  │  automatically.                                          │"
 echo "  └──────────────────────────────────────────────────────────┘"
 echo ""
 
-# Run claude auth login (bypasses gateway env vars so it talks direct to Anthropic)
-ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" claude auth login
+# Run claude auth login interactively (needs TTY for code input)
+ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude auth login
+LOGIN_EXIT=$?
+
+if [ "$LOGIN_EXIT" -ne 0 ]; then
+  echo "[void-claude] Login cancelled or failed."
+  exit 1
+fi
 
 # Check if login succeeded
 if [ ! -f "$CREDS_FILE" ]; then
-  echo ""
-  echo "[void-claude] Login failed or cancelled."
+  echo "[void-claude] No credentials found after login."
   exit 1
 fi
 
@@ -74,4 +80,3 @@ for i in $(seq 1 10); do
 done
 
 echo "[void-claude] Gateway didn't activate yet. Run 'gateway-status' to check."
-echo "[void-claude] You may need to run 'gateway-start' to restart the watchdog."
