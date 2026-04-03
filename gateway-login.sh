@@ -144,7 +144,7 @@ rl.question("  Paste the code here: ", (code) => {
           const hchunks = [];
           hres.on("data", (c) => hchunks.push(c));
           hres.on("end", () => {
-            if (Buffer.concat(hchunks).toString().includes('"ok"')) {
+            if (Buffer.concat(hchunks).toString().includes("\x22ok\x22")) {
               console.log("[void-claude] Gateway is active!");
               console.log("");
               console.log("  Run \x27claude\x27 to start — all traffic routes through the privacy gateway.");
