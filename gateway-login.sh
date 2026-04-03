@@ -60,7 +60,7 @@ console.log("");
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 rl.question("  Paste the code here: ", (code) => {
   rl.close();
-  code = code.trim();
+  code = code.trim().split("#")[0];  // Strip #state fragment if browser appends it
   if (!code) { console.error("[void-claude] No code provided."); process.exit(1); }
 
   const body = JSON.stringify({
