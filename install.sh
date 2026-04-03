@@ -356,28 +356,24 @@ check_gateway_or_explain() {
     return 0  # gateway is up
   fi
 
-  # Gateway is down — diagnose
-  local has_creds
-  has_creds=$(devcontainer exec --workspace-folder "$workspace_folder" \
-    sh -c 'test -f ~/.claude/.credentials.json && echo yes' 2>/dev/null || echo "")
+  # Gateway is down or degraded — diagnose
+  local gw_health
+  gw_health=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    curl -sk --connect-timeout 2 https://localhost:8443/_health 2>/dev/null || echo "")
 
-  local watchdog_up
-  watchdog_up=$(devcontainer exec --workspace-folder "$workspace_folder" \
-    sh -c 'test -f /tmp/void-claude-watchdog.pid && kill -0 $(cat /tmp/void-claude-watchdog.pid) 2>/dev/null && echo yes' 2>/dev/null || echo "")
-
-  # Check if gateway is in degraded mode (running but no OAuth)
-  local degraded
-  degraded=$(devcontainer exec --workspace-folder "$workspace_folder" \
-    curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
-  if echo "$degraded" | grep -q '"degraded"'; then
+  if echo "$gw_health" | grep -q '"degraded"'; then
     log_warn "Gateway is in degraded mode (no OAuth token)"
     log_info "Run: vclaude login"
     return 1
   fi
 
-  if [[ "$has_creds" != "yes" ]]; then
-    log_error "Gateway not running — no OAuth credentials"
-    log_info "Run: vclaude login"
+  local watchdog_up
+  watchdog_up=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    sh -c 'test -f /tmp/void-claude-watchdog.pid && kill -0 $(cat /tmp/void-claude-watchdog.pid) 2>/dev/null && echo yes' 2>/dev/null || echo "")
+
+  if [[ -z "$gw_health" ]] && [[ "$watchdog_up" != "yes" ]]; then
+    log_error "Gateway and watchdog are both down"
+    log_info "Try: vclaude shell → gateway-start"
   elif [[ "$watchdog_up" == "yes" ]]; then
     log_warn "Gateway starting up (watchdog is running)..."
     log_info "Wait a few seconds and try again."
