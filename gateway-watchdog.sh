@@ -24,7 +24,12 @@ YAML_MOD="/opt/void-claude/node_modules/yaml"
 # ── Logging ────────────────────────────────────────────────────
 log() { echo "[$(date -u +%H:%M:%S)] [watchdog] $1" | tee -a "$WD_LOG"; }
 
-# ── Write our PID ──────────────────────────────────────────────
+# ── Single instance lock ──────────────────────────────────────
+LOCK_FILE="/tmp/void-claude-watchdog.lock"
+if [ -f "$LOCK_FILE" ] && kill -0 "$(cat "$LOCK_FILE" 2>/dev/null)" 2>/dev/null; then
+  exit 0  # another instance is already running
+fi
+echo $$ > "$LOCK_FILE"
 echo $$ > "$WD_PID_FILE"
 
 # ── Check binary ──────────────────────────────────────────────
