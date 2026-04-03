@@ -21,14 +21,20 @@ if [ ! -x "$GW_BIN" ]; then
   exit 0
 fi
 
-# ── Create data dirs (handle permission issues) ────────────────
-mkdir -p "$CERTS_DIR" "$GW_DATA/audit" 2>/dev/null || \
-  sudo mkdir -p "$CERTS_DIR" "$GW_DATA/audit" 2>/dev/null && \
+# ── Create data dirs (handle permission issues from bind mount) ─
+# The bind mount from host may create /opt/.gateway-data as root
+# Fix ownership first, then create subdirs
+if [ -d "$GW_DATA" ] && [ ! -w "$GW_DATA" ]; then
   sudo chown -R "$(id -u):$(id -g)" "$GW_DATA" 2>/dev/null
-
+fi
+mkdir -p "$CERTS_DIR" "$GW_DATA/audit" 2>/dev/null
 if [ ! -d "$CERTS_DIR" ]; then
-  echo "[gateway] ERROR: Cannot create $CERTS_DIR"
-  echo "[gateway] Try: sudo mkdir -p $CERTS_DIR && sudo chown -R \$(id -u) $GW_DATA"
+  # Last resort: sudo create + chown
+  sudo mkdir -p "$CERTS_DIR" "$GW_DATA/audit" 2>/dev/null
+  sudo chown -R "$(id -u):$(id -g)" "$GW_DATA" 2>/dev/null
+fi
+if [ ! -d "$CERTS_DIR" ]; then
+  echo "[gateway] ERROR: Cannot create $CERTS_DIR — check bind mount permissions"
   exit 0
 fi
 

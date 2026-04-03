@@ -220,6 +220,9 @@ cmd_template() {
   cp "$SCRIPT_DIR/gateway-start.sh" "$devcontainer_dir/"
   [[ -d "$SCRIPT_DIR/_gateway" ]] && cp -r "$SCRIPT_DIR/_gateway" "$devcontainer_dir/"
 
+  # Ensure .gateway-data/ exists on host for bind mount
+  mkdir -p "$target_dir/.gateway-data"
+
   # Restore preserved mounts
   if [[ -n "$preserved_mounts" ]]; then
     merge_mounts_from_file "$devcontainer_json" "$preserved_mounts"
