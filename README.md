@@ -18,7 +18,7 @@ Based on [trailofbits/claude-code-devcontainer](https://github.com/trailofbits/c
 
 ```bash
 # Clone the repo
-git clone git@github.com:dilagluc/vclaude.git ~/.vclaude
+git clone https://github.com/dilagluc/vclaude.git ~/.vclaude
 
 # Install the vclaude command to PATH
 cd ~/.vclaude && bash install.sh self-install
