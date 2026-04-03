@@ -57,30 +57,20 @@ eval "$(fzf --zsh)"
 alias gateway-start='/opt/gateway-start.sh'
 alias gateway-stop='kill $(cat /tmp/void-claude.pid 2>/dev/null) 2>/dev/null && echo "Gateway stopped" || echo "Gateway not running"'
 alias gateway-logs='tail -f /tmp/void-claude.log'
-alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | python3 -m json.tool || echo "Gateway not running"'
-alias gateway-restart='gateway-stop; sleep 1; gateway-start'
+alias gateway-watchdog-logs='tail -f /tmp/void-claude-watchdog.log'
+alias gateway-status='curl -sk https://localhost:8443/_health 2>/dev/null | python3 -m json.tool || echo "Gateway not running (watchdog will auto-start when credentials exist)"'
+alias gateway-restart='/opt/gateway-start.sh'
 alias gateway-config='${EDITOR:-nano} /opt/.gateway-data/config.yaml'
 
-# Set gateway env vars only if certs exist (avoids SSL errors before first setup)
+# Gateway env vars — set conditionally
 export ANTHROPIC_BASE_URL="https://localhost:8443"
-if [ -f "/opt/.gateway-data/certs/ca.crt" ]; then
-  export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
-fi
+[ -f "/opt/.gateway-data/certs/ca.crt" ] && export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
 
-# Smart claude wrapper: bypasses gateway when it's down, auto-starts after login
+# Claude wrapper: bypass gateway when it's down (watchdog handles the rest)
 claude() {
-  local gw_was_down=false
-  if ! curl -sk --connect-timeout 1 https://localhost:8443/_health >/dev/null 2>&1; then
-    gw_was_down=true
-    # Gateway not running — talk directly to Anthropic
-    ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
-    # After claude exits, try to start gateway (credentials now exist)
-    if [ -f "$HOME/.claude/.credentials.json" ]; then
-      echo ""
-      echo "[void-claude] Starting gateway with fresh credentials..."
-      /opt/gateway-start.sh
-    fi
-  else
+  if curl -sk --connect-timeout 1 https://localhost:8443/_health >/dev/null 2>&1; then
     command claude "$@"
+  else
+    ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
   fi
 }

@@ -94,9 +94,10 @@ COPY --chown=vscode:vscode _gateway/config_documentation.yaml /opt/void-claude/c
 COPY --chown=vscode:vscode _gateway/node_modules /opt/void-claude/node_modules
 RUN chmod +x /opt/void-claude/void-claude
 
-# ── Gateway startup script ─────────────────────────────────────
+# ── Gateway startup + watchdog ──────────────────────────────────
 COPY --chown=vscode:vscode gateway-start.sh /opt/gateway-start.sh
-RUN chmod +x /opt/gateway-start.sh
+COPY --chown=vscode:vscode gateway-watchdog.sh /opt/gateway-watchdog.sh
+RUN chmod +x /opt/gateway-start.sh /opt/gateway-watchdog.sh
 
 # ── Shell + post-install config ────────────────────────────────
 COPY --chown=vscode:vscode .zshrc /home/vscode/.zshrc.custom

@@ -70,5 +70,5 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "postCreateCommand": "uv run --no-project /opt/post_install.py",
-  "postStartCommand": "/opt/gateway-start.sh"
+  "postStartCommand": "nohup /opt/gateway-watchdog.sh >> /tmp/void-claude-watchdog.log 2>&1 &"
 }

@@ -218,6 +218,7 @@ cmd_template() {
   cp "$SCRIPT_DIR/post_install.py" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/.zshrc" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/gateway-start.sh" "$devcontainer_dir/"
+  cp "$SCRIPT_DIR/gateway-watchdog.sh" "$devcontainer_dir/"
   [[ -d "$SCRIPT_DIR/_gateway" ]] && cp -r "$SCRIPT_DIR/_gateway" "$devcontainer_dir/"
 
   # Ensure .gateway-data/ exists on host for bind mount
@@ -317,22 +318,58 @@ cmd_claude() {
 
   check_devcontainer_cli
 
-  # Check if gateway is running inside the container
+  # Check if gateway is running
   local gw_up
-  gw_up=$(devcontainer exec --workspace-folder "$workspace_folder" curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
+  gw_up=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    curl -sk --connect-timeout 1 https://localhost:8443/_health 2>/dev/null || echo "")
 
-  if [[ -z "$gw_up" ]] || ! echo "$gw_up" | grep -q "ok"; then
-    # Gateway not running — bypass it so claude can talk to Anthropic directly (for login)
-    log_info "Gateway not running — launching Claude Code directly..."
-    devcontainer exec --workspace-folder "$workspace_folder" \
-      env ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" claude "$@"
-    # After claude exits, try to start gateway
-    log_info "Starting gateway with fresh credentials..."
-    devcontainer exec --workspace-folder "$workspace_folder" /opt/gateway-start.sh || true
-  else
+  if echo "$gw_up" | grep -q "ok"; then
     log_info "Launching Claude Code (routed through void-claude)..."
     devcontainer exec --workspace-folder "$workspace_folder" claude "$@"
+  else
+    log_info "Gateway not ready — launching Claude Code directly..."
+    log_info "Watchdog will auto-start gateway after you login."
+    devcontainer exec --workspace-folder "$workspace_folder" \
+      env ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" claude "$@"
   fi
+}
+
+check_gateway_or_explain() {
+  # Check gateway health inside container. If down, explain why and exit.
+  local workspace_folder="$1"
+  local health
+  health=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    curl -sk --connect-timeout 2 https://localhost:8443/_health 2>/dev/null || echo "")
+
+  if echo "$health" | grep -q "ok"; then
+    return 0  # gateway is up
+  fi
+
+  # Gateway is down — diagnose
+  local has_creds
+  has_creds=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    sh -c 'test -f ~/.claude/.credentials.json && echo yes' 2>/dev/null || echo "")
+
+  local watchdog_up
+  watchdog_up=$(devcontainer exec --workspace-folder "$workspace_folder" \
+    sh -c 'test -f /tmp/void-claude-watchdog.pid && kill -0 $(cat /tmp/void-claude-watchdog.pid) 2>/dev/null && echo yes' 2>/dev/null || echo "")
+
+  if [[ "$has_creds" != "yes" ]]; then
+    log_error "Gateway not running — no OAuth credentials"
+    echo ""
+    log_info "Login first:"
+    log_info "  vclaude shell"
+    log_info "  claude            (login when prompted)"
+    log_info ""
+    log_info "The watchdog will auto-start the gateway within seconds."
+  elif [[ "$watchdog_up" == "yes" ]]; then
+    log_warn "Gateway starting up (watchdog is running)..."
+    log_info "Wait a few seconds and try again."
+  else
+    log_error "Gateway and watchdog are both down"
+    log_info "Try: vclaude shell → gateway-start"
+  fi
+  return 1
 }
 
 cmd_admin() {
@@ -342,6 +379,9 @@ cmd_admin() {
   check_devcontainer_cli
 
   if [[ "${1:-}" == "--expose" ]]; then
+    # Check gateway first
+    check_gateway_or_explain "$workspace_folder" || exit 1
+
     # Find the container ID
     local label="devcontainer.local_folder=$workspace_folder"
     local container_id
@@ -395,6 +435,9 @@ while True:
     log_success "Proxy running (PID $PROXY_PID)"
     wait "$PROXY_PID" 2>/dev/null
   else
+    # Check gateway first
+    check_gateway_or_explain "$workspace_folder" || exit 1
+
     # Print stats + client list
     echo ""
     echo -e "${BLUE}=== Gateway Health ===${NC}"
