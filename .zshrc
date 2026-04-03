@@ -67,13 +67,15 @@ if [ -f "/opt/.gateway-data/certs/ca.crt" ]; then
   export NODE_EXTRA_CA_CERTS="/opt/.gateway-data/certs/ca.crt"
 fi
 
-# Smart claude wrapper: bypasses gateway when it's down or for /login
+# Smart claude wrapper: bypasses gateway when it's down, auto-starts after login
 claude() {
-  if [[ "$1" == "/login" ]] || ! curl -sk --connect-timeout 1 https://localhost:8443/_health >/dev/null 2>&1; then
-    # Gateway not running or doing login — talk directly to Anthropic
+  local gw_was_down=false
+  if ! curl -sk --connect-timeout 1 https://localhost:8443/_health >/dev/null 2>&1; then
+    gw_was_down=true
+    # Gateway not running — talk directly to Anthropic
     ANTHROPIC_BASE_URL="" NODE_EXTRA_CA_CERTS="" command claude "$@"
-    # After login, try to start gateway automatically
-    if [[ "$1" == "/login" ]]; then
+    # After claude exits, try to start gateway (credentials now exist)
+    if [ -f "$HOME/.claude/.credentials.json" ]; then
       echo ""
       echo "[void-claude] Starting gateway with fresh credentials..."
       /opt/gateway-start.sh
