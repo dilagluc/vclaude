@@ -87,10 +87,37 @@ vclaude shell
 gateway-status           # health check — shows mode, OAuth, clients
 gateway-logs             # tail gateway logs in real time
 gateway-config           # edit config (mode, rules, templates, limits)
+gateway-login            # switch upstream provider (Anthropic / Kimi / Moonshot / Z.ai)
 gateway-restart          # restart gateway after config changes
 gateway-stop             # stop the gateway
 gateway-start            # start the gateway
 ```
+
+## Switching upstream providers
+
+`gateway-login` is a menu-driven setup for pointing the gateway at a different upstream. Hot-reload picks up the change immediately — no restart needed.
+
+```
+gateway-login
+
+  1) Anthropic OAuth  (Claude.ai subscription, PKCE flow)
+  2) Anthropic API key  (sk-ant-…)
+  3) Custom provider  (Kimi Coding / Moonshot / Z.ai)    ← DEFAULT
+     └── kimi       → https://api.kimi.com/coding/       ← default
+         moonshot   → https://api.moonshot.ai/anthropic
+         zai        → https://api.z.ai/api/anthropic
+         custom     → enter your own URL / model / auth style
+```
+
+Hitting `Enter` twice walks straight into the Kimi Coding flow.
+
+**Kimi Coding subscription (default)** — paste your `sk-kimi-...` key from [kimi.com/code](https://www.kimi.com/code). The script writes `upstream.url`, `api_key`, `auth_style: bearer`, `provider: custom`, and `model_map: "*": kimi-for-coding`. Inside Claude Code, press `Tab` before a prompt to enable K2.5 Thinking for that turn.
+
+**Force thinking on every request** — the script asks whether to force-enable extended thinking (default: no). Pick `y` for batch / non-interactive pipelines that can't press Tab. Leave it off for interactive use.
+
+**Switching back to Anthropic** — run `gateway-login` → `1` (OAuth) or `2` (API key). The script cleanly wipes any leftover custom-provider settings from the previous login.
+
+See [PROVIDERS.md in void-claude](https://github.com/dilagluc/void-claude/blob/main/PROVIDERS.md) for the full config reference, auth styles, and provider cookbook.
 
 ## Admin Endpoint (from host)
 
