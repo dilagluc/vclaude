@@ -9,11 +9,52 @@ server:
     cert: ./certs/cert.pem
     key: ./certs/key.pem
 
-# Upstream Anthropic API
+# Upstream API endpoint
+#
+# Supports Anthropic and any Anthropic-compatible provider.
+# Auth methods (API key wins over OAuth if both are set):
+#   - OAuth:   set `oauth.refresh_token` below (Claude.ai subscribers)
+#   - API key: set `upstream.api_key` here, or export ANTHROPIC_API_KEY
+#              (bearer providers can also use ANTHROPIC_AUTH_TOKEN env)
+#
+# Examples:
+#
+#   Anthropic (sk-ant- API key, x-api-key style):
+#     url: https://api.anthropic.com
+#     api_key: "sk-ant-..."
+#
+#   Kimi Coding subscription (bearer auth, api.kimi.com/coding/):
+#     url: https://api.kimi.com/coding/
+#     api_key: "sk-kimi-..."
+#     auth_style: bearer             # Kimi coding requires Authorization: Bearer
+#     provider: custom
+#     model_map:
+#       "*": kimi-for-coding         # single routed model; thinking via Tab key
+#
+#   Moonshot platform (Kimi K2 variants, x-api-key):
+#     url: https://api.moonshot.ai/anthropic
+#     api_key: "..."
+#     provider: custom
+#     model_map:
+#       "*": kimi-k2-thinking        # or kimi-k2-thinking-turbo, kimi-k2-turbo-preview
+#
+#   Z.ai / GLM:
+#     url: https://api.z.ai/api/anthropic
+#     api_key: "..."
+#     provider: custom
+#     model_map:
+#       "*": glm-4.6
 upstream:
   url: https://api.anthropic.com
+  # api_key: "sk-ant-..."              # optional; ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN env also work
+  # auth_style: x-api-key              # x-api-key (default) | bearer
+  # provider: anthropic                # or "custom" for Kimi/Z.ai/etc.
+  # model_map:                         # only used when provider=custom
+  #   "*": kimi-for-coding             # "*" is a catch-all; per-model entries allowed
+  #   claude-opus-4-6: kimi-for-coding
 
 # OAuth - gateway manages token lifecycle centrally
+# Not required if upstream.api_key (or ANTHROPIC_API_KEY env var) is set.
 # Step 1: On admin machine, run `claude` and do browser OAuth login
 # Step 2: Copy refresh_token from one of these locations:
 #   macOS Keychain: security find-generic-password -s "~/.claude-credentials" -w | jq -r '.claudeAiOauth.refreshToken'
