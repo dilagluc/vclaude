@@ -207,6 +207,49 @@ vclaude upgrade          # upgrade Claude Code to latest
 vclaude mount <h> <c>    # add a host mount to the container
 ```
 
+## Upgrading from an older version
+
+When new gateway binaries (including `cch-selftest`) or Dockerfile changes
+ship to this repo, existing installs need to pull the new state and rebuild
+their container:
+
+```bash
+vclaude update           # pulls latest binaries + Dockerfile from origin
+cd <your project>
+vclaude rebuild          # rebuild container with the new image (auth preserved)
+```
+
+`vclaude update` runs `git pull --ff-only` in your vclaude clone (typically
+`~/.vclaude`), which fetches the new Dockerfile **and** the LFS-tracked
+binaries under `_gateway/`. `vclaude rebuild` then runs
+`devcontainer up --remove-existing-container`, which stops the old container,
+rebuilds the image from the updated Dockerfile, and starts a fresh container
+on it. Your auth state (Claude OAuth tokens, gateway config) lives in
+Docker volumes and is preserved across rebuilds.
+
+If you have multiple projects, run `vclaude rebuild` inside each.
+
+After upgrading, old image layers can pile up. Clean them with:
+
+```bash
+docker image prune        # remove dangling images (safe)
+docker image prune -a     # remove ALL unused images (more aggressive)
+```
+
+To start fully fresh (drops auth + config too):
+
+```bash
+vclaude destroy           # nuke container, volumes, image for current project
+vclaude .                 # reinstall template and start
+```
+
+Verify the new tooling landed:
+
+```bash
+vclaude shell
+cch-selftest              # should print ✅ PASS — seed for X.Y.Z is correct.
+```
+
 ## Architecture
 
 ```
