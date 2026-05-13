@@ -91,7 +91,31 @@ gateway-login            # switch upstream provider (Anthropic / Kimi / Moonshot
 gateway-restart          # restart gateway after config changes
 gateway-stop             # stop the gateway
 gateway-start            # start the gateway
+
+cch-selftest             # verify gateway's CCH seed matches the local claude binary
 ```
+
+## CCH seed self-test
+
+The gateway re-signs the `cch=` attestation hash in every `/v1/messages`
+request, using a seed that is hardcoded per Claude Code version. Anthropic
+rotates this seed occasionally; when they do, the gateway's signatures stop
+matching and requests start failing.
+
+`cch-selftest` catches that drift. It's a standalone binary shipped inside the
+container — no source checkout needed:
+
+```bash
+vclaude shell
+cch-selftest                              # uses `which claude`
+cch-selftest --binary /path/to/claude     # specific binary
+```
+
+On success it prints `✅ PASS — seed for X.Y.Z is correct.` and exits 0. On
+mismatch it prints a boxed warning (observed vs computed CCH, gateway seed,
+pointer to the RE location in 2.1.140) and exits 1. Run it after every
+`claude upgrade` to confirm the gateway still authenticates correctly. Full
+reference: [CCH-SELFTEST.md in the gateway source repo](https://github.com/dilagluc/void-claude/blob/main/CCH-SELFTEST.md).
 
 ## Switching upstream providers
 

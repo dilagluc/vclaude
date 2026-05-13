@@ -94,6 +94,14 @@ COPY --chown=vscode:vscode _gateway/config_documentation.yaml /opt/void-claude/c
 COPY --chown=vscode:vscode _gateway/node_modules /opt/void-claude/node_modules
 RUN chmod +x /opt/void-claude/void-claude
 
+# ── cch-selftest binary — diagnostic for CCH seed drift ────────
+# Standalone tool: runs `claude -p hi` through an ephemeral MITM proxy and
+# compares the binary's CCH against what the gateway would compute. Run as:
+#   cch-selftest                # uses `which claude`
+#   cch-selftest --binary <path>
+COPY --chown=vscode:vscode _gateway/cch-selftest /usr/local/bin/cch-selftest
+RUN chmod +x /usr/local/bin/cch-selftest
+
 # ── Gateway startup + watchdog ──────────────────────────────────
 COPY --chown=vscode:vscode gateway-start.sh /opt/gateway-start.sh
 COPY --chown=vscode:vscode gateway-watchdog.sh /opt/gateway-watchdog.sh
