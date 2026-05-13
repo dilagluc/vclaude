@@ -210,45 +210,89 @@ vclaude mount <h> <c>    # add a host mount to the container
 ## Upgrading from an older version
 
 When new gateway binaries (including `cch-selftest`) or Dockerfile changes
-ship to this repo, existing installs need to pull the new state and rebuild
-their container:
+ship to this repo, existing installs need to pull the new state from GitHub
+and then rebuild their container.
+
+### TL;DR
 
 ```bash
-vclaude update           # pulls latest binaries + Dockerfile from origin
+vclaude update           # git pull --ff-only in your ~/.vclaude clone
 cd <your project>
 vclaude rebuild          # rebuild container with the new image (auth preserved)
 ```
 
-`vclaude update` runs `git pull --ff-only` in your vclaude clone (typically
-`~/.vclaude`), which fetches the new Dockerfile **and** the LFS-tracked
-binaries under `_gateway/`. `vclaude rebuild` then runs
+`vclaude update` runs `git pull --ff-only` inside your vclaude clone
+(typically `~/.vclaude`), which fetches the new Dockerfile **and** the
+LFS-tracked binaries under `_gateway/`. `vclaude rebuild` then runs
 `devcontainer up --remove-existing-container`, which stops the old container,
-rebuilds the image from the updated Dockerfile, and starts a fresh container
-on it. Your auth state (Claude OAuth tokens, gateway config) lives in
-Docker volumes and is preserved across rebuilds.
+rebuilds the image from the updated Dockerfile, and starts a fresh container.
+Your auth state (Claude OAuth tokens, gateway config) lives in Docker volumes
+and is preserved across rebuilds.
 
 If you have multiple projects, run `vclaude rebuild` inside each.
 
-After upgrading, old image layers can pile up. Clean them with:
+### If `vclaude update` is unavailable or fails
+
+Older installs may not have the `update` subcommand, or `vclaude` itself may
+not be on `PATH`. Do the equivalent by hand:
+
+```bash
+cd ~/.vclaude            # or wherever you cloned vclaude
+git lfs install          # idempotent — ensures LFS smudge filter is active
+git pull --ff-only       # fetches new commits + new LFS binaries
+```
+
+If the clone is broken or you want a clean slate of the repo (auth is **not**
+in the clone, it's in Docker volumes — safe to delete):
+
+```bash
+# Prerequisites — same as a first install
+sudo apt-get install -y git-lfs        # or: brew install git-lfs
+gh auth login                          # vclaude is a private repo
+git lfs install
+
+# Re-clone from GitHub
+rm -rf ~/.vclaude
+git clone https://github.com/dilagluc/vclaude.git ~/.vclaude
+
+# Re-install the vclaude command to ~/.local/bin
+cd ~/.vclaude && bash install.sh self-install
+vclaude help                           # sanity check
+```
+
+Then rebuild each project's container:
+
+```bash
+cd <project>
+vclaude rebuild
+```
+
+### Cleaning up old Docker images
+
+`vclaude rebuild` doesn't auto-prune old image layers. After upgrading:
 
 ```bash
 docker image prune        # remove dangling images (safe)
 docker image prune -a     # remove ALL unused images (more aggressive)
 ```
 
-To start fully fresh (drops auth + config too):
+To start fully fresh on a single project (drops that project's auth + config too):
 
 ```bash
 vclaude destroy           # nuke container, volumes, image for current project
 vclaude .                 # reinstall template and start
 ```
 
-Verify the new tooling landed:
+### Verify the upgrade
 
 ```bash
 vclaude shell
-cch-selftest              # should print ✅ PASS — seed for X.Y.Z is correct.
+cch-selftest              # ✅ PASS — seed for X.Y.Z is correct.
 ```
+
+If `cch-selftest` is not found, the new image didn't land — re-check that
+`vclaude update` actually pulled new commits (`git -C ~/.vclaude log --oneline -3`)
+and that `vclaude rebuild` ran without errors.
 
 ## Architecture
 
